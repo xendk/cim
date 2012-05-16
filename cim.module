@@ -1,0 +1,446 @@
+<?php
+
+/**
+ * @file
+ * Configuration interchange and management.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function cim_menu() {
+  $items['admin/config/development/cim'] = array(
+    'title' => 'Configuration Interchange and Management',
+    'file' => 'cim.admin.inc',
+    'page callback' => 'cim_testing',
+    // @todo proper permissions.
+    'access arguments' => array('administer site configuration'),
+  );
+
+  return $items;
+}
+
+/**
+ * Take a snapshot of the current configuration.
+ *
+ * @return Array
+ *   The current configuration.
+ */
+function cim_take_snapshot() {
+  $cnf = config_get_storage_names_with_prefix();
+  $config = array();
+  foreach ($cnf as $key) {
+    $conf = config($key);
+    $config[$key] = $conf->get();
+  }
+  return $config;
+}
+
+/**
+ * Compute the differences between 2 snapshots.
+ */
+function cim_diff($a, $b, $prefix = array()) {
+  $diff = array();
+  $str_prefix = join('.', $prefix);
+  $common_keys = array_intersect_key($a, $b);
+  foreach ($common_keys as $key => $dummy) {
+    if (is_array($a[$key]) && is_array($b[$key])) {
+      $diff += cim_diff($a[$key], $b[$key], $prefix + array($key));
+    }
+    else {
+      if ($a[$key] !== $b[$key]) {
+        $diff[$str_prefix . $key] = new Difference($prefix + array($key), $a[$key], $b[$key]);
+      }
+    }
+  }
+
+  $a_keys = array_diff_key($a, $common_keys);
+  foreach ($a_keys as $key => $value) {
+    $diff[$str_prefix . $key] = new Difference($prefix + array($key), $value, NULL);
+  }
+
+  $b_keys = array_diff_key($b, $common_keys);
+  foreach ($b_keys as $key => $value) {
+    $diff[$str_prefix . $key] = new Difference($prefix + array($key), NULL, $value);
+  }
+
+  return array_filter($diff);
+}
+
+interface SnapshotInterface {
+  function exists($path);
+  function get($path);
+  function set($path, $value);
+  function clear($path);
+  function toArray();
+  /* function commit(); */
+}
+
+class ArraySnapshot implements SnapshotInterface {
+  private $config = array();
+  function __construct($array) {
+    if (!is_array($array)) {
+      throw new Exception('Non-array passed to ArraySnapshot::__construct.');
+    }
+    $this->config = $array;
+  }
+
+  function exists($path) {
+    return drupal_array_nested_key_exists($this->config, $path);
+  }
+
+  function get($path) {
+    return drupal_array_get_nested_value($this->config, $path);
+  }
+
+  function set($path, $value) {
+    drupal_array_set_nested_value($this->config, $path, $value);
+  }
+
+  function clear($path) {
+    $name = array_pop($path);
+    $ref = &$this->config;
+    foreach ($path as $parent) {
+      $ref = &$ref[$parent];
+    }
+    unset($ref[$name]);
+  }
+
+  function toArray() {
+    return $this->config;
+  }
+}
+class Config implements SnapshotInterface {
+  private $configs = array();
+
+  function __construct() {
+    $cnf = config_get_storage_names_with_prefix();
+    foreach ($cnf as $key) {
+      $this->configs[$key] = config($key);
+    }
+  }
+
+  function exists($path) {
+    $name = array_shift($path);
+    if (!isset($this->configs[$name])) {
+      return FALSE;
+    }
+
+    return $this->configs[$name]->get(join('.', $path)) !== NULL ? TRUE : FALSE;
+  }
+
+  function get($path) {
+    $name = array_shift($path);
+    if (!isset($this->configs[$name])) {
+      return NULL;
+    }
+
+    return $this->configs[$name]->get(join('.', $path));
+  }
+
+  function set($path, $value) {
+    $name = array_shift($path);
+
+    return $this->configs[$name]->set(join('.', $path), $value);
+  }
+
+  function clear($path) {
+    $name = array_shift($path);
+    if (!isset($this->configs[$name])) {
+      return;
+    }
+
+    $this->configs[$name]->clear(join('.', $path));
+  }
+
+  function toArray() {
+    $cnf = config_get_storage_names_with_prefix();
+    $config = array();
+    foreach ($this->configs as $key => $conf) {
+      $config[$key] = $conf->get();
+    }
+    return $config;
+  }
+}
+
+class Difference {
+  /**
+   * Special NULL value so we can distinguish NULL and really non-existing.
+   * md5('Difference::EMPTY')
+   */
+  const NULL = 'f8ce859e75fec78d568b2800b99c9854';
+  public $path;
+  public $a;
+  public $b;
+
+  /**
+   * Create a new difference.
+   */
+  function __construct($path, $a, $b) {
+    $this->path = $path;
+    $this->a = $a;
+    $this->b = $b;
+  }
+
+  /**
+   * Test if difference applies to changeset.
+   */
+  public function appliesTo(SnapshotInterface $snapshot) {
+    if ($this->noopCheck($snapshot)) {
+      return TRUE;
+    }
+    if ($this->a === self::NULL) {
+      return !$snapshot->exists($this->path);
+    }
+    return $snapshot->get($this->path) === $this->a;
+  }
+
+  /**
+   * Apply difference to snapshot.
+   */
+  public function apply(SnapshotInterface $snapshot) {
+    if (!$this->appliesTo($snapshot)) {
+      return FALSE;
+    }
+    if ($this->b === self::NULL) {
+      $snapshot->clear($this->path);
+    }
+    else {
+      $snapshot->set($this->path, $this->b);
+    }
+    return $snapshot;
+  }
+
+  /**
+   * Test if difference is already implemented.
+   */
+  protected function noopCheck(SnapshotInterface $snapshot) {
+    if ($this->b === self::NULL) {
+      return !$snapshot->exists($this->path);
+    }
+    return $snapshot->get($this->path) === $this->b;
+  }
+
+}
+
+class Changeset {
+  /**
+   * Parent snapshot.
+   */
+  protected $parent = "";
+  // @todo should be protected, but easier to debug when public.
+  public $changes;
+
+  /**
+   * Create a changeset from the difference.
+   *
+   * @return Changeset|NULL
+   *   changeset or NULL if no changes detected.
+   */
+  public static function fromDiff($a, $b, $parent = "") {
+    $changes = Changeset::diff($a, $b);
+    if ($changes) {
+      $changeset = new Changeset();
+      $changeset->parent = $parent;
+      $changeset->changes = $changes;
+      return $changeset;
+    }
+    return NULL;
+  }
+
+  /**
+   * Compute the difference between two snapshots.
+   */
+  public static function diff($a, $b, $prefix = array()) {
+    $diff = array();
+    $str_prefix = join('.', $prefix);
+    foreach (array('a', 'b') as $var) {
+      if (!is_array(${$var})) {
+        if (${$var} instanceof SnapshotInterface) {
+          ${$var} = ${$var}->toArray();
+        }
+        else {
+          throw new Exception("Argument to diff not an array or instance of SnapshotInterface.");
+        }
+      }
+    }
+    $common_keys = array_intersect_key($a, $b);
+    foreach ($common_keys as $key => $dummy) {
+      if (is_array($a[$key]) && is_array($b[$key])) {
+        $diff = array_merge($diff, Changeset::diff($a[$key], $b[$key], array_merge($prefix, array($key))));
+      }
+      else {
+        if ($a[$key] !== $b[$key]) {
+          $diff[] = new Difference(array_merge($prefix, array($key)), $a[$key], $b[$key]);
+        }
+      }
+    }
+
+    $a_keys = array_diff_key($a, $common_keys);
+    foreach ($a_keys as $key => $value) {
+      $diff[] = new Difference(array_merge($prefix, array($key)), $value, Difference::NULL);
+    }
+
+    $b_keys = array_diff_key($b, $common_keys);
+    foreach ($b_keys as $key => $value) {
+      $diff[] = new Difference(array_merge($prefix, array($key)), Difference::NULL, $value);
+    }
+
+    return array_filter($diff);
+  }
+
+  /**
+   * The parent of this changeset.
+   */
+  public function parent() {
+    return $this->parent;
+  }
+
+  /**
+   * Test if this changeset will apply to the given snapshot.
+   */
+  public function appliesTo(SnapshotInterface $snapshot) {
+    foreach ($this->changes as $change) {
+      if (!$change->appliesTo($snapshot)) {
+        return FALSE;
+      }
+    }
+    return TRUE;
+  }
+
+  /**
+   * Applies changeset to snapshot.
+   */
+  public function apply(SnapshotInterface $snapshot) {
+    foreach ($this->changes as $change) {
+      if (!($snapshot = $change->apply($snapshot))) {
+        return FALSE;
+      }
+    }
+    return $snapshot;
+  }
+
+  /**
+   * Return the identifier for this changeset.
+   */
+  public function identifier() {
+    $string = $this->parent;
+    foreach ($this->changes as $change) {
+      $string .= serialize($change);
+    }
+    return hash('sha256', $string);
+  }
+}
+
+class SnapshotController {
+  const FULL_DUMP_FREQUENCY = 3;
+  /**
+   * Take a snapshot.
+   */
+  public function save() {
+    $fulldump = FALSE;
+    $config = new Config();
+    $latest_row = $this->latest();
+    if ($latest_row) {
+      list($depth, $previous_dump) = $this->latestDump($latest_row);
+      $changeset = Changeset::fromDiff($previous_dump, $config, $latest_row->identifier);
+      if ($depth >= self::FULL_DUMP_FREQUENCY) {
+        $fulldump = TRUE;
+      }
+    }
+    else {
+      $fulldump = TRUE;
+      $changeset = Changeset::fromDiff(array(), $config);
+    }
+    if ($changeset) {
+      $snapshot = new stdClass();
+      if ($fulldump) {
+        $snapshot->dump = $config->toArray();
+      }
+      $snapshot->changeset = $changeset;
+      $snapshot->identifier = $changeset->identifier();
+      $snapshot->parent = $changeset->parent();
+      $snapshot->created = REQUEST_TIME;
+      drupal_write_record('cim', $snapshot);
+      return TRUE;
+    }
+    return FALSE;
+  }
+
+  /**
+   * Load a snapshot.
+   */
+  public function load($sha) {
+  }
+
+  /* public function list() { */
+  /* } */
+
+  public function latest() {
+    $latest = db_select('cim', 'c')
+      ->fields('c', array('cid', 'identifier', 'parent', 'changeset', 'dump', 'created'))
+      ->orderBy('created', 'DESC')
+      ->orderBy('cid', 'DESC')
+      ->range(0, 1)
+      ->execute()->fetch();
+    if ($latest) {
+      $latest->changeset = unserialize($latest->changeset);
+      if (!empty($latest->dump)) {
+        $latest->dump = unserialize($latest->dump);
+      }
+    }
+    return $latest;
+  }
+
+  public function latestDump($changeset_row) {
+    if (empty($changeset_row->dump)) {
+      // Loop back through history until we find a dump.
+      $changesets = array();
+      $cur_changeset = $changeset_row;
+      while (empty($cur_changeset->dump)) {
+        $changesets[] = $cur_changeset->cid;
+        $cur_changeset = db_select('cim', 'c')
+          ->fields('c', array('cid', 'identifier', 'parent', 'dump'))
+          ->condition('identifier', $cur_changeset->parent)
+          ->execute()->fetch();
+        if (!$cur_changeset) {
+          throw new Exception('CIM: Broken history.');
+        }
+      }
+
+      if (empty($cur_changeset->dump)) {
+        throw new Exception('CIM: Broken history, could not find base dump.');
+      }
+
+      $depth = 0;
+      $dump = new ArraySnapshot(unserialize($cur_changeset->dump));
+      // Now load and apply them one by one (to conserve memory) in reverse.
+      while ($cid = array_pop($changesets)) {
+        $cur_changeset = db_select('cim', 'c')
+          ->fields('c', array('identifier', 'changeset'))
+          ->condition('cid', $cid)
+          ->execute()->fetch();
+
+        $changeset = unserialize($cur_changeset->changeset);
+        $dump = $changeset->apply($dump);
+        $depth++;
+
+        // Hint for garbage collection.
+        unset($cur_changeset);
+      }
+
+      return array($depth, $dump);
+    }
+    return array(0, $changeset_row->dump);
+  }
+
+  protected function lastFullDump($changeset_row) {
+    return db_select('cim', 'c')
+      ->fields('c', array('identifier', 'parent', 'changeset', 'dump', 'created'))
+      ->condition('created', $changeset_row->created, '<')
+      ->condition('dump', NULL, '!=')
+      ->orderBy('created', 'DESC')
+      ->range(0, 1)
+      ->execute()->fetch();
+  }
+}

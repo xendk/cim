@@ -1,0 +1,66 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the system module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function cim_schema() {
+  $schema['cim'] = array(
+    'description' => 'Stores configuration snapshots and changesets.',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'Primary Key: Unique ID.',
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),
+      'identifier' => array(
+        'description' => 'Changeset id.',
+        'type' => 'char',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'parent' => array(
+        'description' => 'Changeset id af parent.',
+        'type' => 'char',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'changeset' => array(
+        'description' => 'Changeset data.',
+        'type' => 'blob',
+        'not null' => TRUE,
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+      'dump' => array(
+        'description' => 'Optional configuration dump.',
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+      ),
+      'created' => array(
+        'description' => 'A Unix timestamp indicating when the entry was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'identifier' => array('identifier'),
+      'parent' => array('parent'),
+      // Create an index of 1 char of the dump, so the DB can find those
+      // non-null.
+      'created' => array('created', array('dump', 1)),
+    ),
+    'primary key' => array('cid'),
+  );
+
+  return $schema;
+}
