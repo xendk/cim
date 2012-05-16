@@ -6,6 +6,43 @@
  */
 
 /**
+ * Menu callback; Snapshot list page.
+ */
+function cim_admin_list($identifier = NULL) {
+  $build = array();
+  $ssc = new SnapshotController();
+  // Pseudo paging by asking for one too many.
+  $changesets = $ssc->listing(11, $identifier);
+  $next_page = FALSE;
+
+  if (sizeof($changesets) > 10) {
+    $next_page = TRUE;
+    array_pop($changesets);
+  }
+
+  $rows = array();
+  $header = array(t('Num'), t('Id'), t('+/X/-'));
+  foreach ($changesets as $changeset_row) {
+    $diff_stat = $changeset_row->changeset->diff3Stat();
+    $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
+    $rows[] = array($changeset_row->cid, $changeset_row->identifier, $diff_stat);
+  }
+  $build['listing'] = array(
+    '#theme' => 'table',
+    '#title' => t('Snapshots'),
+    '#header' => $header,
+    '#rows' => $rows,
+  );
+  if ($next_page) {
+    $last = end($changesets);
+    $build['next'] = array(
+      '#markup' => l('Older', 'admin/config/development/cim/list/' . $last->identifier),
+    );
+  }
+  return $build;
+}
+
+/**
  * Menu callback; Testing page.
  *
  * @todo not for release.

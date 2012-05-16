@@ -11,10 +11,27 @@
 function cim_menu() {
   $items['admin/config/development/cim'] = array(
     'title' => 'Configuration Interchange and Management',
+    'page callback' => 'cim_admin_list',
+    // @todo proper permissions.
+    'access arguments' => array('administer site configuration'),
     'file' => 'cim.admin.inc',
+  );
+
+  $items['admin/config/development/cim/list'] = array(
+    'title' => 'List',
+    'description' => 'List snapshots',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -1,
+    'file' => 'cim.admin.inc',
+  );
+
+  $items['admin/config/development/cim/test'] = array(
+    'title' => 'Teststuff',
     'page callback' => 'cim_testing',
     // @todo proper permissions.
     'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
   );
 
   return $items;
@@ -253,6 +270,36 @@ class Difference {
   }
 
   /**
+   * Count the additions/changes/removals of change.
+   */
+  public function diff3Stat() {
+    $stat = array(0, 0, 0);
+    if ($this->a === self::NULL) {
+      // Additions.
+      $stat[0] = sizeof($this->b);
+    }
+    elseif ($this->b === self::NULL) {
+      // Removals.
+      $stat[2] = sizeof($this->a);
+    }
+    else {
+      // Counts as X changes and Y additions/removals.
+      $a = sizeof($this->a);
+      $b = sizeof($this->b);
+      $changes = min($a, $b);
+      $diff = max($a, $b) - $changes;
+      if ($a > $b) {
+        $stat[1] = $diff;
+      }
+      else {
+        $stat[0] = $diff;
+      }
+      $stat[1] = $changes;
+    }
+    return $stat;
+  }
+
+  /**
    * Test if difference is already implemented.
    */
   protected function noopCheck(SnapshotInterface $snapshot) {
@@ -377,6 +424,20 @@ class Changeset {
     }
     return hash('sha256', $string);
   }
+
+  /**
+   * Count the additions/changes/removals of changeset.
+   */
+  public function diff3Stat() {
+    $total = array(0, 0, 0);
+    foreach ($this->changes as $change) {
+      $stat = $change->diff3Stat();
+      $total[0] += $stat[0];
+      $total[1] += $stat[1];
+      $total[2] += $stat[2];
+    }
+    return $total;
+  }
 }
 
 /**
@@ -424,18 +485,56 @@ class SnapshotController {
   /**
    * Load a snapshot.
    */
-  public function load($sha) {
+  public function load($identifier) {
+    $row = db_select('cim', 'c')
+      ->fields('c')
+      ->condition('identifier', $identifier)
+      ->execute()->fetch();
+    if ($row) {
+      $row->changeset = unserialize($row->changeset);
+      if (isset($row->dump)) {
+        $row->dump = unserialize($row->dump);
+      }
+    }
+    return $row;
   }
 
-  /* public function list() { */
-  /* } */
+  /**
+   * List snapshots in reverse chronological order.
+   *
+   * @param int $num
+   *   Number of changesets to list.
+   * @param string $start
+   *   Identifier of the changeset to start from.
+   */
+  public function listing($num = 10, $start = NULL) {
+    $result = array();
+    if ($start) {
+      $row = $this->load($start);
+    }
+    else {
+      $row = $this->latest();
+    }
+    if (!$row) {
+      return $result;
+    }
+
+    while (sizeof($result) < $num) {
+      $row = $this->load($row->parent);
+      if (!$row) {
+        break;
+      }
+      $result[] = $row;
+    }
+    return $result;
+  }
 
   /**
    * Get the latest changeset.
    */
   public function latest() {
     $latest = db_select('cim', 'c')
-      ->fields('c', array('cid', 'identifier', 'parent', 'changeset', 'dump', 'created'))
+      ->fields('c')
       ->orderBy('created', 'DESC')
       ->orderBy('cid', 'DESC')
       ->range(0, 1)
