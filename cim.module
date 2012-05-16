@@ -21,63 +21,49 @@ function cim_menu() {
 }
 
 /**
- * Take a snapshot of the current configuration.
- *
- * @return Array
- *   The current configuration.
+ * Interface for interacting with snapshots and configuration.
  */
-function cim_take_snapshot() {
-  $cnf = config_get_storage_names_with_prefix();
-  $config = array();
-  foreach ($cnf as $key) {
-    $conf = config($key);
-    $config[$key] = $conf->get();
-  }
-  return $config;
-}
-
-/**
- * Compute the differences between 2 snapshots.
- */
-function cim_diff($a, $b, $prefix = array()) {
-  $diff = array();
-  $str_prefix = join('.', $prefix);
-  $common_keys = array_intersect_key($a, $b);
-  foreach ($common_keys as $key => $dummy) {
-    if (is_array($a[$key]) && is_array($b[$key])) {
-      $diff += cim_diff($a[$key], $b[$key], $prefix + array($key));
-    }
-    else {
-      if ($a[$key] !== $b[$key]) {
-        $diff[$str_prefix . $key] = new Difference($prefix + array($key), $a[$key], $b[$key]);
-      }
-    }
-  }
-
-  $a_keys = array_diff_key($a, $common_keys);
-  foreach ($a_keys as $key => $value) {
-    $diff[$str_prefix . $key] = new Difference($prefix + array($key), $value, NULL);
-  }
-
-  $b_keys = array_diff_key($b, $common_keys);
-  foreach ($b_keys as $key => $value) {
-    $diff[$str_prefix . $key] = new Difference($prefix + array($key), NULL, $value);
-  }
-
-  return array_filter($diff);
-}
-
 interface SnapshotInterface {
+  /**
+   * Checks if a given config path exists.
+   */
   function exists($path);
+
+  /**
+   * Get the value of a config item.
+   */
   function get($path);
+
+  /**
+   * Set the value of a config item.
+   */
   function set($path, $value);
+
+  /**
+   * Clear (unset) a config item.
+   */
   function clear($path);
+
+  /**
+   * Convert to the common array format.
+   */
   function toArray();
+
   /* function commit(); */
 }
 
+/**
+ * Implements SnapshotInterface using an internal array for storage.
+ */
 class ArraySnapshot implements SnapshotInterface {
-  private $config = array();
+  /**
+   * The configuration.
+   */
+  protected $config = array();
+
+  /**
+   * Constructor. Takes an array in the common format.
+   */
   function __construct($array) {
     if (!is_array($array)) {
       throw new Exception('Non-array passed to ArraySnapshot::__construct.');
@@ -85,18 +71,30 @@ class ArraySnapshot implements SnapshotInterface {
     $this->config = $array;
   }
 
+  /**
+   * Implements SnapshotInterface::exists().
+   */
   function exists($path) {
     return drupal_array_nested_key_exists($this->config, $path);
   }
 
+  /**
+   * Implements SnapshotInterface::get().
+   */
   function get($path) {
     return drupal_array_get_nested_value($this->config, $path);
   }
 
+  /**
+   * Implements SnapshotInterface::set().
+   */
   function set($path, $value) {
     drupal_array_set_nested_value($this->config, $path, $value);
   }
 
+  /**
+   * Implements SnapshotInterface::clear().
+   */
   function clear($path) {
     $name = array_pop($path);
     $ref = &$this->config;
@@ -106,13 +104,26 @@ class ArraySnapshot implements SnapshotInterface {
     unset($ref[$name]);
   }
 
+  /**
+   * Implements SnapshotInterface::toArray().
+   */
   function toArray() {
     return $this->config;
   }
 }
-class Config implements SnapshotInterface {
-  private $configs = array();
 
+/**
+ * SnapshotInterface to the config system.
+ */
+class Config implements SnapshotInterface {
+  /**
+   * Array of DrupalConfig objects.
+   */
+  protected $configs = array();
+
+  /**
+   * Constructor.
+   */
   function __construct() {
     $cnf = config_get_storage_names_with_prefix();
     foreach ($cnf as $key) {
@@ -120,6 +131,9 @@ class Config implements SnapshotInterface {
     }
   }
 
+  /**
+   * Implements SnapshotInterface::exists().
+   */
   function exists($path) {
     $name = array_shift($path);
     if (!isset($this->configs[$name])) {
@@ -129,6 +143,9 @@ class Config implements SnapshotInterface {
     return $this->configs[$name]->get(join('.', $path)) !== NULL ? TRUE : FALSE;
   }
 
+  /**
+   * Implements SnapshotInterface::get().
+   */
   function get($path) {
     $name = array_shift($path);
     if (!isset($this->configs[$name])) {
@@ -138,12 +155,18 @@ class Config implements SnapshotInterface {
     return $this->configs[$name]->get(join('.', $path));
   }
 
+  /**
+   * Implements SnapshotInterface::set().
+   */
   function set($path, $value) {
     $name = array_shift($path);
 
     return $this->configs[$name]->set(join('.', $path), $value);
   }
 
+  /**
+   * Implements SnapshotInterface::clear().
+   */
   function clear($path) {
     $name = array_shift($path);
     if (!isset($this->configs[$name])) {
@@ -153,6 +176,9 @@ class Config implements SnapshotInterface {
     $this->configs[$name]->clear(join('.', $path));
   }
 
+  /**
+   * Implements SnapshotInterface::toArray().
+   */
   function toArray() {
     $cnf = config_get_storage_names_with_prefix();
     $config = array();
@@ -163,14 +189,29 @@ class Config implements SnapshotInterface {
   }
 }
 
+/**
+ * Represents a single change to a snapshot.
+ */
 class Difference {
   /**
    * Special NULL value so we can distinguish NULL and really non-existing.
    * md5('Difference::EMPTY')
    */
   const NULL = 'f8ce859e75fec78d568b2800b99c9854';
+
+  /**
+   * The config path changed.
+   */
   public $path;
+
+  /**
+   * Existing value.
+   */
   public $a;
+
+  /**
+   * New value.
+   */
   public $b;
 
   /**
@@ -183,7 +224,7 @@ class Difference {
   }
 
   /**
-   * Test if difference applies to changeset.
+   * Test if difference applies to snapshot.
    */
   public function appliesTo(SnapshotInterface $snapshot) {
     if ($this->noopCheck($snapshot)) {
@@ -223,16 +264,22 @@ class Difference {
 
 }
 
+/**
+ * Represents a set of changes to a configuration.
+ */
 class Changeset {
   /**
    * Parent snapshot.
    */
   protected $parent = "";
-  // @todo should be protected, but easier to debug when public.
-  public $changes;
 
   /**
-   * Create a changeset from the difference.
+   * Array of Differences.
+   */
+  protected $changes;
+
+  /**
+   * Create a changeset from the difference between two snapshots.
    *
    * @return Changeset|NULL
    *   changeset or NULL if no changes detected.
@@ -290,7 +337,7 @@ class Changeset {
   }
 
   /**
-   * The parent of this changeset.
+   * Returns the parent of this changeset.
    */
   public function parent() {
     return $this->parent;
@@ -332,8 +379,15 @@ class Changeset {
   }
 }
 
+/**
+ * Manages snapshots.
+ */
 class SnapshotController {
+  /**
+   * The number of changesets between saving a full dump of configuration.
+   */
   const FULL_DUMP_FREQUENCY = 3;
+
   /**
    * Take a snapshot.
    */
@@ -376,6 +430,9 @@ class SnapshotController {
   /* public function list() { */
   /* } */
 
+  /**
+   * Get the latest changeset.
+   */
   public function latest() {
     $latest = db_select('cim', 'c')
       ->fields('c', array('cid', 'identifier', 'parent', 'changeset', 'dump', 'created'))
@@ -392,6 +449,12 @@ class SnapshotController {
     return $latest;
   }
 
+  /**
+   * Get a config dump from a changeset.
+   *
+   * Finds the last full dump and applies the following changesets, up to the
+   * supplied changset.
+   */
   public function latestDump($changeset_row) {
     if (empty($changeset_row->dump)) {
       // Loop back through history until we find a dump.
@@ -432,15 +495,5 @@ class SnapshotController {
       return array($depth, $dump);
     }
     return array(0, $changeset_row->dump);
-  }
-
-  protected function lastFullDump($changeset_row) {
-    return db_select('cim', 'c')
-      ->fields('c', array('identifier', 'parent', 'changeset', 'dump', 'created'))
-      ->condition('created', $changeset_row->created, '<')
-      ->condition('dump', NULL, '!=')
-      ->orderBy('created', 'DESC')
-      ->range(0, 1)
-      ->execute()->fetch();
   }
 }
