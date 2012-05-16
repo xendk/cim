@@ -25,6 +25,18 @@ function cim_menu() {
     'file' => 'cim.admin.inc',
   );
 
+  $items['admin/config/development/cim/snapshot/%cim_snapshot'] = array(
+    'title' => 'Show',
+    'description' => 'Show  snapshot',
+    'page callback' => 'cim_admin_snapshot',
+    'page arguments' => array(5),
+    // @todo proper permissions.
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_CALLBACK,
+    'weight' => -1,
+    'file' => 'cim.admin.inc',
+  );
+
   $items['admin/config/development/cim/test'] = array(
     'title' => 'Teststuff',
     'page callback' => 'cim_testing',
@@ -35,6 +47,14 @@ function cim_menu() {
   );
 
   return $items;
+}
+
+/**
+ * Menu loader function.
+ */
+function cim_snapshot_load($cid) {
+  $ssc = new SnapshotController();
+  return $ssc->loadCid($cid);
 }
 
 /**
@@ -391,6 +411,13 @@ class Changeset {
   }
 
   /**
+   * Returns array of changes.
+   */
+  public function changes() {
+    return $this->changes;
+  }
+
+  /**
    * Test if this changeset will apply to the given snapshot.
    */
   public function appliesTo(SnapshotInterface $snapshot) {
@@ -480,6 +507,20 @@ class SnapshotController {
       return TRUE;
     }
     return FALSE;
+  }
+
+  public function loadCid($cid) {
+    $row = db_select('cim', 'c')
+      ->fields('c')
+      ->condition('cid', $cid)
+      ->execute()->fetch();
+    if ($row) {
+      $row->changeset = unserialize($row->changeset);
+      if (isset($row->dump)) {
+        $row->dump = unserialize($row->dump);
+      }
+    }
+    return $row;
   }
 
   /**

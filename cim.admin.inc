@@ -25,7 +25,11 @@ function cim_admin_list($identifier = NULL) {
   foreach ($changesets as $changeset_row) {
     $diff_stat = $changeset_row->changeset->diff3Stat();
     $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
-    $rows[] = array($changeset_row->cid, $changeset_row->identifier, $diff_stat);
+    $rows[] = array(
+      $changeset_row->cid,
+      l($changeset_row->identifier, 'admin/config/development/cim/snapshot/' . $changeset_row->cid),
+      $diff_stat,
+    );
   }
   $build['listing'] = array(
     '#theme' => 'table',
@@ -39,6 +43,68 @@ function cim_admin_list($identifier = NULL) {
       '#markup' => l('Older', 'admin/config/development/cim/list/' . $last->identifier),
     );
   }
+  return $build;
+}
+
+/**
+ * Menu callback; Show snapshot page.
+ */
+function cim_admin_snapshot($snapshot) {
+  // Include the utility drupal_var_export() function.
+  include_once './core/includes/utility.inc';
+  $build['meta'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Snapshot information'),
+  );
+
+  $build['meta']['identifier'] = array(
+    '#type' => 'item',
+    '#title' => 'Changeset id',
+    '#markup' => $snapshot->identifier,
+  );
+
+  $build['meta']['parent'] = array(
+    '#type' => 'item',
+    '#title' => 'Parent changeset id',
+    '#markup' => $snapshot->parent,
+  );
+
+  $build['meta']['created'] = array(
+    '#type' => 'item',
+    '#title' => 'Creation time',
+    '#markup' => format_date($snapshot->created),
+  );
+
+  if (!empty($snapshot->dump)){
+    $build['meta']['dump'] = array(
+      '#type' => 'markup',
+      '#markup' => t('Includes full config dump.'),
+    );
+  }
+
+  $changes = $snapshot->changeset->changes();
+  $rows = array();
+  foreach ($changes as $change) {
+    $rows[] = array(
+      join('.', $change->path),
+      $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
+      $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
+    );
+  }
+
+  $build['changes'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Changes'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+
+  $build['changes']['details'] = array(
+    '#theme' => 'table',
+    '#header' => array(t('Configuration key'), t('From'), t('To')),
+    '#rows' => $rows,
+  );
+
   return $build;
 }
 
