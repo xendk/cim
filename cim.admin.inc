@@ -92,6 +92,8 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
 
 /**
  * Submit handler.
+ *
+ * Creates a new snapshot.
  */
 function cim_admin_create_snapshot_form_submit($form, &$form_state) {
   cim_get_controller()->save();
@@ -100,6 +102,8 @@ function cim_admin_create_snapshot_form_submit($form, &$form_state) {
 
 /**
  * Menu callback; Show snapshot page.
+ *
+ * @todo Shared changes display logic.
  */
 function cim_admin_snapshot_view($snapshot) {
   // Include the utility drupal_var_export() function.
