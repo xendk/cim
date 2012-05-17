@@ -9,7 +9,9 @@
  * Implements hook_menu().
  */
 function cim_menu() {
-  $items['admin/config/development/cim'] = array(
+  $root = 'admin/config/development/cim';
+
+  $items[$root] = array(
     'title' => 'Configuration Interchange and Management',
     'page callback' => 'cim_admin_list',
     // @todo proper permissions.
@@ -17,33 +19,53 @@ function cim_menu() {
     'file' => 'cim.admin.inc',
   );
 
-  $items['admin/config/development/cim/list'] = array(
+  $items[$root . '/list'] = array(
     'title' => 'List',
     'description' => 'List snapshots',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -1,
     'file' => 'cim.admin.inc',
   );
-
-  $items['admin/config/development/cim/snapshot/%cim_snapshot'] = array(
-    'title' => 'Show',
-    'description' => 'Show  snapshot',
-    'page callback' => 'cim_admin_snapshot',
-    'page arguments' => array(5),
-    // @todo proper permissions.
-    'access arguments' => array('administer site configuration'),
-    'type' => MENU_CALLBACK,
-    'weight' => -1,
-    'file' => 'cim.admin.inc',
-  );
-
-  $items['admin/config/development/cim/test'] = array(
+  $items[$root . '/test'] = array(
     'title' => 'Teststuff',
     'page callback' => 'cim_testing',
     // @todo proper permissions.
     'access arguments' => array('administer site configuration'),
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
+  );
+
+  $items[$root . '/create'] = array(
+    'title' => 'Create snapshot.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_create_snapshot_form'),
+    // @todo proper permissions.
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_ACTION,
+    'file' => 'cim.admin.inc',
+  );
+
+  $items[$root . '/snapshot/%cim_snapshot'] = array(
+    'title' => 'Snapshot details',
+    'page callback' => 'cim_admin_snapshot_view',
+    'page arguments' => array(5),
+    // @todo proper permissions.
+    'access arguments' => array('administer site configuration'),
+    'file' => 'cim.admin.inc',
+  );
+
+  $items[$root . '/snapshot/%cim_snapshot/details'] = array(
+    'title' => 'Details',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -1,
+  );
+
+  $items[$root . '/snapshot/%cim_snapshot/revert'] = array(
+    'title' => 'Revert',
+    'page callback' => 'cim_admin_snapshot_revert',
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access arguments' => array('administer site configuration'),
   );
 
   return $items;
@@ -55,6 +77,17 @@ function cim_menu() {
 function cim_snapshot_load($cid) {
   $ssc = new SnapshotController();
   return $ssc->loadCid($cid);
+}
+
+/**
+ * Get the snapshot controller.
+ */
+function cim_get_controller() {
+  $controller = &drupal_static(__FUNCTION__, NULL);
+  if (!isset($controller)) {
+    $controller = new SnapshotController();
+  }
+  return $controller;
 }
 
 /**
@@ -480,6 +513,18 @@ class SnapshotController {
    * Take a snapshot.
    */
   public function save() {
+    $snapshot = $this->create();
+    if ($snapshot) {
+      drupal_write_record('cim', $snapshot);
+      return TRUE;
+    }
+    return FALSE;
+  }
+
+  /**
+   * Create changeset from current configuration changes.
+   */
+  public function create() {
     $fulldump = FALSE;
     $config = new Config();
     $latest_row = $this->latest();
@@ -503,8 +548,7 @@ class SnapshotController {
       $snapshot->identifier = $changeset->identifier();
       $snapshot->parent = $changeset->parent();
       $snapshot->created = REQUEST_TIME;
-      drupal_write_record('cim', $snapshot);
-      return TRUE;
+      return $snapshot;
     }
     return FALSE;
   }
@@ -560,6 +604,7 @@ class SnapshotController {
       return $result;
     }
 
+    $result[] = $row;
     while (sizeof($result) < $num) {
       $row = $this->load($row->parent);
       if (!$row) {

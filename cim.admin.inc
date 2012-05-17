@@ -10,13 +10,13 @@
  */
 function cim_admin_list($identifier = NULL) {
   $build = array();
-  $ssc = new SnapshotController();
   // Pseudo paging by asking for one too many.
-  $changesets = $ssc->listing(11, $identifier);
+  $changesets = cim_get_controller()->listing(11, $identifier);
   $next_page = FALSE;
 
   if (sizeof($changesets) > 10) {
     $next_page = TRUE;
+    // Ignore the extra.
     array_pop($changesets);
   }
 
@@ -47,9 +47,61 @@ function cim_admin_list($identifier = NULL) {
 }
 
 /**
+ * Form callback; create snapshot.
+ */
+function cim_admin_create_snapshot_form($form, &$form_state) {
+  $snapshot = cim_get_controller()->create();
+
+  if ($snapshot) {
+    $changes = $snapshot->changeset->changes();
+    $rows = array();
+    foreach ($changes as $change) {
+      $rows[] = array(
+        join('.', $change->path),
+        $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
+        $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
+      );
+    }
+
+    $form['intro'] = array(
+      '#markup' => t('The new snapshot will consist of the changes below.'),
+    );
+
+    $form['changes'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Changes'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+
+    $form['changes']['details'] = array(
+      '#theme' => 'table',
+      '#header' => array(t('Configuration key'), t('From'), t('To')),
+      '#rows' => $rows,
+    );
+    return confirm_form($form, 'Create a new snapshot?', 'admin/config/development/cim');
+  }
+  else {
+    $form['message'] = array(
+      '#markup' => t('No configuration changes, not creating a snapshot.'),
+    );
+
+    return $form;
+  }
+}
+
+/**
+ * Submit handler.
+ */
+function cim_admin_create_snapshot_form_submit($form, &$form_state) {
+  cim_get_controller()->save();
+  $form_state['redirect'] = 'admin/config/development/cim';
+}
+
+/**
  * Menu callback; Show snapshot page.
  */
-function cim_admin_snapshot($snapshot) {
+function cim_admin_snapshot_view($snapshot) {
   // Include the utility drupal_var_export() function.
   include_once './core/includes/utility.inc';
   $build['meta'] = array(
