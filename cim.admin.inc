@@ -11,24 +11,24 @@
 function cim_admin_list($identifier = NULL) {
   $build = array();
   // Pseudo paging by asking for one too many.
-  $changesets = cim_get_controller()->listing(11, $identifier);
+  $snapshots = cim_get_controller()->listing(11, $identifier);
   $next_page = FALSE;
 
-  if (sizeof($changesets) > 10) {
+  if (sizeof($snapshots) > 10) {
     $next_page = TRUE;
     // Ignore the extra.
-    array_pop($changesets);
+    array_pop($snapshots);
   }
 
   $rows = array();
   $header = array(t('Num'), t('Created'), t('Id'), t('+/X/-'));
-  foreach ($changesets as $changeset_row) {
-    $diff_stat = $changeset_row->changeset->diff3Stat();
+  foreach ($snapshots as $snapshot) {
+    $diff_stat = $snapshot->changeset->diff3Stat();
     $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
     $rows[] = array(
-      $changeset_row->cid,
-      format_date($changeset_row->created, 'short'),
-      l($changeset_row->identifier, 'admin/config/development/cim/snapshot/' . $changeset_row->cid),
+      $snapshot->cid,
+      format_date($snapshot->created, 'short'),
+      l($snapshot->identifier, 'admin/config/development/cim/snapshot/' . $snapshot->cid),
       $diff_stat,
     );
   }
@@ -39,7 +39,7 @@ function cim_admin_list($identifier = NULL) {
     '#rows' => $rows,
   );
   if ($next_page) {
-    $last = end($changesets);
+    $last = end($snapshots);
     $build['next'] = array(
       '#markup' => l('Older', 'admin/config/development/cim/list/' . $last->identifier),
     );
@@ -132,7 +132,7 @@ function cim_admin_snapshot_view($snapshot) {
     '#markup' => format_date($snapshot->created),
   );
 
-  if (!empty($snapshot->dump)){
+  if (!empty($snapshot->dump)) {
     $build['meta']['dump'] = array(
       '#type' => 'markup',
       '#markup' => t('Includes full config dump.'),

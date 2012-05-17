@@ -500,6 +500,40 @@ class Changeset {
   }
 }
 
+class Snapshot {
+  // @todo these properties should be protected, but we have code depending on
+  // them that needs other ways to get the required information then.
+  public $cid;
+  public $identifier;
+  public $parent;
+  public $changeset;
+  public $dump;
+  public $created;
+
+  public function __construct() {
+    // If these properties is already set, we were loaded from database.
+    if (!empty($this->changeset)) {
+      $this->changeset = unserialize($this->changeset);
+    }
+    if (!empty($this->dump)) {
+      $this->dump = unserialize($this->dump);
+    }
+    if (empty($this->create)) {
+      $this->created = REQUEST_TIME;
+    }
+  }
+
+  public function setChangset($changeset) {
+    $this->changeset = $changeset;
+    $this->identifier = $changeset->identifier;
+    $this->parent = $changeset->parent;
+  }
+
+  public function setDump($dump) {
+    $this->dump = $dump;
+  }
+}
+
 /**
  * Manages snapshots.
  */
@@ -540,48 +574,31 @@ class SnapshotController {
       $changeset = Changeset::fromDiff(array(), $config);
     }
     if ($changeset) {
-      $snapshot = new stdClass();
+      $snapshot = new Snapshot();
       if ($fulldump) {
-        $snapshot->dump = $config->toArray();
+        $snapshot->setDump($config->toArray());
       }
-      $snapshot->changeset = $changeset;
-      $snapshot->identifier = $changeset->identifier();
-      $snapshot->parent = $changeset->parent();
-      $snapshot->created = REQUEST_TIME;
+      $snapshot->setChangeset($changeset);
       return $snapshot;
     }
     return FALSE;
   }
 
   public function loadCid($cid) {
-    $row = db_select('cim', 'c')
+    return db_select('cim', 'c', array('fetch' => 'Snapshot'))
       ->fields('c')
       ->condition('cid', $cid)
       ->execute()->fetch();
-    if ($row) {
-      $row->changeset = unserialize($row->changeset);
-      if (isset($row->dump)) {
-        $row->dump = unserialize($row->dump);
-      }
-    }
-    return $row;
   }
 
   /**
    * Load a snapshot.
    */
   public function load($identifier) {
-    $row = db_select('cim', 'c')
+    return db_select('cim', 'c', array('fetch' => 'Snapshot'))
       ->fields('c')
       ->condition('identifier', $identifier)
       ->execute()->fetch();
-    if ($row) {
-      $row->changeset = unserialize($row->changeset);
-      if (isset($row->dump)) {
-        $row->dump = unserialize($row->dump);
-      }
-    }
-    return $row;
   }
 
   /**
@@ -619,19 +636,12 @@ class SnapshotController {
    * Get the latest changeset.
    */
   public function latest() {
-    $latest = db_select('cim', 'c')
+    return db_select('cim', 'c', array('fetch' => 'Snapshot'))
       ->fields('c')
       ->orderBy('created', 'DESC')
       ->orderBy('cid', 'DESC')
       ->range(0, 1)
       ->execute()->fetch();
-    if ($latest) {
-      $latest->changeset = unserialize($latest->changeset);
-      if (!empty($latest->dump)) {
-        $latest->dump = unserialize($latest->dump);
-      }
-    }
-    return $latest;
   }
 
   /**
@@ -640,45 +650,45 @@ class SnapshotController {
    * Finds the last full dump and applies the following changesets, up to the
    * supplied changset.
    */
-  public function latestDump($changeset_row) {
-    if (empty($changeset_row->dump)) {
+  public function latestDump($snapshot) {
+    if (empty($snapshot->dump)) {
       // Loop back through history until we find a dump.
       $changesets = array();
-      $cur_changeset = $changeset_row;
-      while (empty($cur_changeset->dump)) {
-        $changesets[] = $cur_changeset->cid;
-        $cur_changeset = db_select('cim', 'c')
+      $cur_snapshot = $snapshot;
+      while (empty($cur_snapshot->dump)) {
+        $changesets[] = $cur_snapshot->cid;
+        $cur_snapshot = db_select('cim', 'c')
           ->fields('c', array('cid', 'identifier', 'parent', 'dump'))
-          ->condition('identifier', $cur_changeset->parent)
+          ->condition('identifier', $cur_snapshot->parent)
           ->execute()->fetch();
-        if (!$cur_changeset) {
+        if (!$cur_snapshot) {
           throw new Exception('CIM: Broken history.');
         }
       }
 
-      if (empty($cur_changeset->dump)) {
+      if (empty($cur_snapshot->dump)) {
         throw new Exception('CIM: Broken history, could not find base dump.');
       }
 
       $depth = 0;
-      $dump = new ArraySnapshot(unserialize($cur_changeset->dump));
+      $dump = new ArraySnapshot(unserialize($cur_snapshot->dump));
       // Now load and apply them one by one (to conserve memory) in reverse.
       while ($cid = array_pop($changesets)) {
-        $cur_changeset = db_select('cim', 'c')
+        $cur_snapshot = db_select('cim', 'c')
           ->fields('c', array('identifier', 'changeset'))
           ->condition('cid', $cid)
           ->execute()->fetch();
 
-        $changeset = unserialize($cur_changeset->changeset);
+        $changeset = unserialize($cur_snapshot->changeset);
         $dump = $changeset->apply($dump);
         $depth++;
 
         // Hint for garbage collection.
-        unset($cur_changeset);
+        unset($cur_snapshot);
       }
 
       return array($depth, $dump);
     }
-    return array(0, $changeset_row->dump);
+    return array(0, $snapshot->dump);
   }
 }
