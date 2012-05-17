@@ -91,9 +91,9 @@ function cim_get_controller() {
 }
 
 /**
- * Interface for interacting with snapshots and configuration.
+ * Interface for interacting with configuration.
  */
-interface SnapshotInterface {
+interface ConfigInterface {
   /**
    * Checks if a given config path exists.
    */
@@ -123,9 +123,9 @@ interface SnapshotInterface {
 }
 
 /**
- * Implements SnapshotInterface using an internal array for storage.
+ * Implements ConfigInterface using an internal array for storage.
  */
-class ArraySnapshot implements SnapshotInterface {
+class ConfigArray implements ConfigInterface {
   /**
    * The configuration.
    */
@@ -136,34 +136,34 @@ class ArraySnapshot implements SnapshotInterface {
    */
   function __construct($array) {
     if (!is_array($array)) {
-      throw new Exception('Non-array passed to ArraySnapshot::__construct.');
+      throw new Exception('Non-array passed to ConfigArray::__construct.');
     }
     $this->config = $array;
   }
 
   /**
-   * Implements SnapshotInterface::exists().
+   * Implements ConfigInterface::exists().
    */
   function exists($path) {
     return drupal_array_nested_key_exists($this->config, $path);
   }
 
   /**
-   * Implements SnapshotInterface::get().
+   * Implements ConfigInterface::get().
    */
   function get($path) {
     return drupal_array_get_nested_value($this->config, $path);
   }
 
   /**
-   * Implements SnapshotInterface::set().
+   * Implements ConfigInterface::set().
    */
   function set($path, $value) {
     drupal_array_set_nested_value($this->config, $path, $value);
   }
 
   /**
-   * Implements SnapshotInterface::clear().
+   * Implements ConfigInterface::clear().
    */
   function clear($path) {
     $name = array_pop($path);
@@ -175,7 +175,7 @@ class ArraySnapshot implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::toArray().
+   * Implements ConfigInterface::toArray().
    */
   function toArray() {
     return $this->config;
@@ -183,9 +183,9 @@ class ArraySnapshot implements SnapshotInterface {
 }
 
 /**
- * SnapshotInterface to the config system.
+ * ConfigInterface to the config system.
  */
-class Config implements SnapshotInterface {
+class ConfigDrupalConfig implements ConfigInterface {
   /**
    * Array of DrupalConfig objects.
    */
@@ -202,7 +202,7 @@ class Config implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::exists().
+   * Implements ConfigInterface::exists().
    */
   function exists($path) {
     $name = array_shift($path);
@@ -214,7 +214,7 @@ class Config implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::get().
+   * Implements ConfigInterface::get().
    */
   function get($path) {
     $name = array_shift($path);
@@ -226,7 +226,7 @@ class Config implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::set().
+   * Implements ConfigInterface::set().
    */
   function set($path, $value) {
     $name = array_shift($path);
@@ -235,7 +235,7 @@ class Config implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::clear().
+   * Implements ConfigInterface::clear().
    */
   function clear($path) {
     $name = array_shift($path);
@@ -247,7 +247,7 @@ class Config implements SnapshotInterface {
   }
 
   /**
-   * Implements SnapshotInterface::toArray().
+   * Implements ConfigInterface::toArray().
    */
   function toArray() {
     $cnf = config_get_storage_names_with_prefix();
@@ -296,7 +296,7 @@ class Difference {
   /**
    * Test if difference applies to snapshot.
    */
-  public function appliesTo(SnapshotInterface $snapshot) {
+  public function appliesTo(ConfigInterface $snapshot) {
     if ($this->noopCheck($snapshot)) {
       return TRUE;
     }
@@ -309,7 +309,7 @@ class Difference {
   /**
    * Apply difference to snapshot.
    */
-  public function apply(SnapshotInterface $snapshot) {
+  public function apply(ConfigInterface $snapshot) {
     if (!$this->appliesTo($snapshot)) {
       return FALSE;
     }
@@ -355,7 +355,7 @@ class Difference {
   /**
    * Test if difference is already implemented.
    */
-  protected function noopCheck(SnapshotInterface $snapshot) {
+  protected function noopCheck(ConfigInterface $snapshot) {
     if ($this->b === self::NULL) {
       return !$snapshot->exists($this->path);
     }
@@ -403,11 +403,11 @@ class Changeset {
     $str_prefix = join('.', $prefix);
     foreach (array('a', 'b') as $var) {
       if (!is_array(${$var})) {
-        if (${$var} instanceof SnapshotInterface) {
+        if (${$var} instanceof ConfigInterface) {
           ${$var} = ${$var}->toArray();
         }
         else {
-          throw new Exception("Argument to diff not an array or instance of SnapshotInterface.");
+          throw new Exception("Argument to diff not an array or instance of ConfigInterface.");
         }
       }
     }
@@ -453,7 +453,7 @@ class Changeset {
   /**
    * Test if this changeset will apply to the given snapshot.
    */
-  public function appliesTo(SnapshotInterface $snapshot) {
+  public function appliesTo(ConfigInterface $snapshot) {
     foreach ($this->changes as $change) {
       if (!$change->appliesTo($snapshot)) {
         return FALSE;
@@ -465,7 +465,7 @@ class Changeset {
   /**
    * Applies changeset to snapshot.
    */
-  public function apply(SnapshotInterface $snapshot) {
+  public function apply(ConfigInterface $snapshot) {
     foreach ($this->changes as $change) {
       if (!($snapshot = $change->apply($snapshot))) {
         return FALSE;
@@ -523,10 +523,10 @@ class Snapshot {
     }
   }
 
-  public function setChangset($changeset) {
+  public function setChangeset($changeset) {
     $this->changeset = $changeset;
-    $this->identifier = $changeset->identifier;
-    $this->parent = $changeset->parent;
+    $this->identifier = $changeset->identifier();
+    $this->parent = $changeset->parent();
   }
 
   public function setDump($dump) {
@@ -560,7 +560,7 @@ class SnapshotController {
    */
   public function create() {
     $fulldump = FALSE;
-    $config = new Config();
+    $config = new ConfigDrupalConfig();
     $latest_row = $this->latest();
     if ($latest_row) {
       list($depth, $previous_dump) = $this->latestDump($latest_row);
@@ -671,7 +671,7 @@ class SnapshotController {
       }
 
       $depth = 0;
-      $dump = new ArraySnapshot(unserialize($cur_snapshot->dump));
+      $dump = new ConfigArray(unserialize($cur_snapshot->dump));
       // Now load and apply them one by one (to conserve memory) in reverse.
       while ($cid = array_pop($changesets)) {
         $cur_snapshot = db_select('cim', 'c')
