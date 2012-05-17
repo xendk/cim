@@ -21,12 +21,13 @@ function cim_admin_list($identifier = NULL) {
   }
 
   $rows = array();
-  $header = array(t('Num'), t('Id'), t('+/X/-'));
+  $header = array(t('Num'), t('Created'), t('Id'), t('+/X/-'));
   foreach ($changesets as $changeset_row) {
     $diff_stat = $changeset_row->changeset->diff3Stat();
     $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
     $rows[] = array(
       $changeset_row->cid,
+      format_date($changeset_row->created, 'short'),
       l($changeset_row->identifier, 'admin/config/development/cim/snapshot/' . $changeset_row->cid),
       $diff_stat,
     );
