@@ -8,10 +8,10 @@
 /**
  * Menu callback; Snapshot list page.
  */
-function cim_admin_list($identifier = NULL) {
+function cim_admin_list($sha = NULL) {
   $build = array();
   // Pseudo paging by asking for one too many.
-  $snapshots = cim_get_controller()->listing(11, $identifier);
+  $snapshots = cim_get_controller()->listing(11, $sha);
   $next_page = FALSE;
 
   if (sizeof($snapshots) > 10) {
@@ -28,7 +28,7 @@ function cim_admin_list($identifier = NULL) {
     $rows[] = array(
       $snapshot->cid,
       format_date($snapshot->created, 'short'),
-      l($snapshot->identifier, 'admin/config/development/cim/snapshot/' . $snapshot->cid),
+      l($snapshot->changeset_sha, 'admin/config/development/cim/snapshot/' . $snapshot->cid),
       $diff_stat,
     );
   }
@@ -41,7 +41,7 @@ function cim_admin_list($identifier = NULL) {
   if ($next_page) {
     $last = end($snapshots);
     $build['next'] = array(
-      '#markup' => l('Older', 'admin/config/development/cim/list/' . $last->identifier),
+      '#markup' => l(t('Older'), 'admin/config/development/cim/list/' . $last->changeset_sha),
     );
   }
   return $build;
@@ -114,16 +114,16 @@ function cim_admin_snapshot_view($snapshot) {
     '#title' => t('Snapshot information'),
   );
 
-  $build['meta']['identifier'] = array(
+  $build['meta']['changeset_sha'] = array(
     '#type' => 'item',
-    '#title' => 'Changeset id',
-    '#markup' => $snapshot->identifier,
+    '#title' => 'Changeset SHA',
+    '#markup' => check_plain($snapshot->changeset_sha),
   );
 
-  $build['meta']['parent'] = array(
+  $build['meta']['changeset_parent'] = array(
     '#type' => 'item',
-    '#title' => 'Parent changeset id',
-    '#markup' => $snapshot->parent,
+    '#title' => 'Parent changeset SHA',
+    '#markup' => $snapshot->changeset_parent ? check_plain($snapshot->changeset_parent) : t('(none, first snapshot)'),
   );
 
   $build['meta']['created'] = array(

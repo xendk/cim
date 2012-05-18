@@ -6,6 +6,16 @@
  */
 
 /**
+ * Implements hook_install().
+ */
+function cim_install() {
+  // Save a first snapshot.
+  // @todo Figure out if there's a way to notify the user when manually enabling
+  // the module, but not if enabled in an install profile (that's kinda
+  // annoying).
+  cim_get_controller()->save();
+}
+/**
  * Implements hook_schema().
  */
 function cim_schema() {
@@ -17,15 +27,15 @@ function cim_schema() {
         'type' => 'serial',
         'not null' => TRUE,
       ),
-      'identifier' => array(
+      'changeset_sha' => array(
         'description' => 'Changeset id.',
         'type' => 'char',
         'length' => '64',
         'not null' => TRUE,
         'default' => '',
       ),
-      'parent' => array(
-        'description' => 'Changeset id af parent.',
+      'changeset_parent' => array(
+        'description' => 'Changeset id of parent changeset.',
         'type' => 'char',
         'length' => '64',
         'not null' => TRUE,
@@ -51,10 +61,24 @@ function cim_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'uid' => array(
+        'description' => 'The {users}.uid created this snapshot.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'comment' => array(
+        'description' => 'Comment for snapshot.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+
     ),
     'indexes' => array(
-      'identifier' => array('identifier'),
-      'parent' => array('parent'),
+      'changeset_sha' => array('changeset_sha'),
+      'changeset_parent' => array('changeset_parent'),
       // Create an index of 1 char of the dump, so the DB can find those
       // non-null.
       'created' => array('created', array('dump', 1)),

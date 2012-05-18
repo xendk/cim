@@ -475,9 +475,9 @@ class Changeset {
   }
 
   /**
-   * Return the identifier for this changeset.
+   * Return the sha for this changeset.
    */
-  public function identifier() {
+  public function sha() {
     $string = $this->parent;
     foreach ($this->changes as $change) {
       $string .= serialize($change);
@@ -504,8 +504,8 @@ class Snapshot {
   // @todo these properties should be protected, but we have code depending on
   // them that needs other ways to get the required information then.
   public $cid;
-  public $identifier;
-  public $parent;
+  public $changeset_sha;
+  public $changeset_parent;
   public $changeset;
   public $dump;
   public $created;
@@ -525,8 +525,8 @@ class Snapshot {
 
   public function setChangeset($changeset) {
     $this->changeset = $changeset;
-    $this->identifier = $changeset->identifier();
-    $this->parent = $changeset->parent();
+    $this->changeset_sha = $changeset->sha();
+    $this->changeset_parent = $changeset->parent();
   }
 
   public function setDump($dump) {
@@ -561,10 +561,10 @@ class SnapshotController {
   public function create() {
     $fulldump = FALSE;
     $config = new ConfigDrupalConfig();
-    $latest_row = $this->latest();
-    if ($latest_row) {
-      list($depth, $previous_dump) = $this->latestDump($latest_row);
-      $changeset = Changeset::fromDiff($previous_dump, $config, $latest_row->identifier);
+    $latest_snapshot = $this->latest();
+    if ($latest_snapshot) {
+      list($depth, $previous_dump) = $this->latestDump($latest_snapshot);
+      $changeset = Changeset::fromDiff($previous_dump, $config, $latest_snapshot->changeset_sha);
       if ($depth >= self::FULL_DUMP_FREQUENCY) {
         $fulldump = TRUE;
       }
@@ -594,10 +594,10 @@ class SnapshotController {
   /**
    * Load a snapshot.
    */
-  public function load($identifier) {
+  public function load($sha) {
     return db_select('cim', 'c', array('fetch' => 'Snapshot'))
       ->fields('c')
-      ->condition('identifier', $identifier)
+      ->condition('changeset_sha', $sha)
       ->execute()->fetch();
   }
 
@@ -607,7 +607,7 @@ class SnapshotController {
    * @param int $num
    *   Number of changesets to list.
    * @param string $start
-   *   Identifier of the changeset to start from.
+   *   SHA of the changeset to start from.
    */
   public function listing($num = 10, $start = NULL) {
     $result = array();
@@ -623,7 +623,7 @@ class SnapshotController {
 
     $result[] = $row;
     while (sizeof($result) < $num) {
-      $row = $this->load($row->parent);
+      $row = $this->load($row->changeset_parent);
       if (!$row) {
         break;
       }
@@ -658,8 +658,8 @@ class SnapshotController {
       while (empty($cur_snapshot->dump)) {
         $changesets[] = $cur_snapshot->cid;
         $cur_snapshot = db_select('cim', 'c')
-          ->fields('c', array('cid', 'identifier', 'parent', 'dump'))
-          ->condition('identifier', $cur_snapshot->parent)
+          ->fields('c', array('cid', 'changeset_sha', 'changeset_parent', 'dump'))
+          ->condition('changeset_sha', $cur_snapshot->changeset_parent)
           ->execute()->fetch();
         if (!$cur_snapshot) {
           throw new Exception('CIM: Broken history.');
@@ -675,7 +675,7 @@ class SnapshotController {
       // Now load and apply them one by one (to conserve memory) in reverse.
       while ($cid = array_pop($changesets)) {
         $cur_snapshot = db_select('cim', 'c')
-          ->fields('c', array('identifier', 'changeset'))
+          ->fields('c', array('changeset_sha', 'changeset'))
           ->condition('cid', $cid)
           ->execute()->fetch();
 
