@@ -55,6 +55,12 @@ function cim_schema() {
         'size' => 'big',
         'serialize' => TRUE,
       ),
+      'previous_dump' => array(
+        'description' => 'The {cim}.cid of the last parent snapshots with a configuration dump.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
       'created' => array(
         'description' => 'A Unix timestamp indicating when the entry was created.',
         'type' => 'int',
@@ -67,8 +73,8 @@ function cim_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
-      'comment' => array(
-        'description' => 'Comment for snapshot.',
+      'message' => array(
+        'description' => 'Snapshot message.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
@@ -76,14 +82,13 @@ function cim_schema() {
       ),
 
     ),
-    'indexes' => array(
-      'changeset_sha' => array('changeset_sha'),
-      'changeset_parent' => array('changeset_parent'),
-      // Create an index of 1 char of the dump, so the DB can find those
-      // non-null.
-      'created' => array('created', array('dump', 1)),
-    ),
     'primary key' => array('cid'),
+    'unique keys' => array(
+      'changeset_sha' => array('changeset_sha'),
+    ),
+    'indexes' => array(
+      'changeset_parent' => array('changeset_parent'),
+    ),
   );
 
   return $schema;

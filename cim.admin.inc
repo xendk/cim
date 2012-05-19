@@ -51,6 +51,8 @@ function cim_admin_list($sha = NULL) {
  * Form callback; create snapshot.
  */
 function cim_admin_create_snapshot_form($form, &$form_state) {
+  // Include the utility drupal_var_export() function.
+  include_once './core/includes/utility.inc';
   $snapshot = cim_get_controller()->create();
 
   if ($snapshot) {
@@ -230,13 +232,12 @@ function cim_testing() {
   /* dpm($cs2->identifier()); */
   /* dpm($cs3->identifier()); */
 
-  $ssc = new SnapshotController();
-  dpm($ssc->save() ? 'saved' : 'nothing to save');
+  dpm(cim_get_controller()->save('Test initial') ? 'saved' : 'nothing to save');
   $config = config('system.performance');
   for ($i = 1; $i < 10; $i++) {
     $config->set('cache', $i);
     $config->save();
-    dpm($ssc->save() ? 'saved' : 'nothing to save');
+    dpm(cim_get_controller()->save('Set chaching to ' . $i) ? 'saved' : 'nothing to save');
   }
   /* config('system.performance')-> */
   /* dpm($ssc->latest()); */

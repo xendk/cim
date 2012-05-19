@@ -503,14 +503,21 @@ class Changeset {
 class Snapshot {
   // @todo these properties should be protected, but we have code depending on
   // them that needs other ways to get the required information then.
+  // One being drupal_write_record. There seems to be no recommended way of
+  // implementing objects with private properties.
   public $cid;
   public $changeset_sha;
   public $changeset_parent;
   public $changeset;
+  // @todo drupal_write_record likes to serialize NULL instead of storing NULL. Figure out why.
   public $dump;
+  public $previous_dump;
   public $created;
+  public $uid;
+  public $message;
 
-  public function __construct() {
+  public function __construct($message = '') {
+    global $user;
     // If these properties is already set, we were loaded from database.
     if (!empty($this->changeset)) {
       $this->changeset = unserialize($this->changeset);
@@ -518,15 +525,28 @@ class Snapshot {
     if (!empty($this->dump)) {
       $this->dump = unserialize($this->dump);
     }
-    if (empty($this->create)) {
+    if (empty($this->created)) {
       $this->created = REQUEST_TIME;
     }
+    if (!isset($this->uid)) {
+      $this->uid = $user->uid;
+    }
+    $this->message = $message;
   }
 
   public function setChangeset($changeset) {
     $this->changeset = $changeset;
     $this->changeset_sha = $changeset->sha();
     $this->changeset_parent = $changeset->parent();
+    if ($this->changeset_parent && empty($this->previous_dump)) {
+      $previous_snapshot = cim_get_controller()->load($this->changeset_parent);
+      if (!empty($previous_snapshot->dump)) {
+        $this->previous_dump = $previous_snapshot->cid;
+      }
+      else {
+        $this->previous_dump = $previous_snapshot->previous_dump;
+      }
+    }
   }
 
   public function setDump($dump) {
@@ -558,7 +578,7 @@ class SnapshotController {
   /**
    * Create changeset from current configuration changes.
    */
-  public function create() {
+  public function create($message = '') {
     $fulldump = FALSE;
     $config = new ConfigDrupalConfig();
     $latest_snapshot = $this->latest();
@@ -574,7 +594,7 @@ class SnapshotController {
       $changeset = Changeset::fromDiff(array(), $config);
     }
     if ($changeset) {
-      $snapshot = new Snapshot();
+      $snapshot = new Snapshot($message);
       if ($fulldump) {
         $snapshot->setDump($config->toArray());
       }
@@ -652,40 +672,30 @@ class SnapshotController {
    */
   public function latestDump($snapshot) {
     if (empty($snapshot->dump)) {
-      // Loop back through history until we find a dump.
-      $changesets = array();
-      $cur_snapshot = $snapshot;
-      while (empty($cur_snapshot->dump)) {
-        $changesets[] = $cur_snapshot->cid;
-        $cur_snapshot = db_select('cim', 'c')
-          ->fields('c', array('cid', 'changeset_sha', 'changeset_parent', 'dump'))
-          ->condition('changeset_sha', $cur_snapshot->changeset_parent)
-          ->execute()->fetch();
-        if (!$cur_snapshot) {
-          throw new Exception('CIM: Broken history.');
-        }
-      }
+      $last_full = $this->loadCid($snapshot->previous_dump);
 
-      if (empty($cur_snapshot->dump)) {
+      if (empty($last_full)) {
         throw new Exception('CIM: Broken history, could not find base dump.');
       }
 
+      // Load snapshots between last full dump and current.
+      $snapshots = db_select('cim', 'c', array('fetch' => 'Snapshot'))
+        ->fields('c')
+        ->condition('previous_dump', $last_full->cid)
+        ->execute()->fetchAllAssoc('changeset_parent');
+
+
       $depth = 0;
-      $dump = new ConfigArray(unserialize($cur_snapshot->dump));
-      // Now load and apply them one by one (to conserve memory) in reverse.
-      while ($cid = array_pop($changesets)) {
-        $cur_snapshot = db_select('cim', 'c')
-          ->fields('c', array('changeset_sha', 'changeset'))
-          ->condition('cid', $cid)
-          ->execute()->fetch();
-
-        $changeset = unserialize($cur_snapshot->changeset);
-        $dump = $changeset->apply($dump);
+      $dump = new ConfigArray($last_full->dump);
+      $current_snapshot = $last_full;
+      do {
+        if (!isset($snapshots[$current_snapshot->changeset_sha])) {
+          throw new Exception('CIM: Broken history.');
+        }
+        $current_snapshot = $snapshots[$current_snapshot->changeset_sha];
+        $dump = $current_snapshot->changeset->apply($dump);
         $depth++;
-
-        // Hint for garbage collection.
-        unset($cur_snapshot);
-      }
+      } while ($current_snapshot->cid != $snapshot->cid);
 
       return array($depth, $dump);
     }
