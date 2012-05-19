@@ -16,8 +16,7 @@ function cim_menu() {
   $items[$root] = array(
     'title' => 'Configuration Interchange and Management',
     'page callback' => 'cim_admin_list',
-    // @todo proper permissions.
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer snapshots'),
     'file' => 'cim.admin.inc',
   );
 
@@ -31,8 +30,7 @@ function cim_menu() {
   $items[$root . '/test'] = array(
     'title' => 'Teststuff',
     'page callback' => 'cim_testing',
-    // @todo proper permissions.
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer snapshots'),
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
   );
@@ -41,8 +39,7 @@ function cim_menu() {
     'title' => 'Create snapshot.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('cim_admin_create_snapshot_form'),
-    // @todo proper permissions.
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer snapshots'),
     'type' => MENU_LOCAL_ACTION,
     'file' => 'cim.admin.inc',
   );
@@ -51,8 +48,7 @@ function cim_menu() {
     'title' => 'Snapshot details',
     'page callback' => 'cim_admin_snapshot_view',
     'page arguments' => array(5),
-    // @todo proper permissions.
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer snapshots'),
     'file' => 'cim.admin.inc',
   );
 
@@ -67,7 +63,7 @@ function cim_menu() {
     'page callback' => 'cim_admin_snapshot_revert',
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer snapshots'),
   );
 
   return $items;
@@ -90,4 +86,15 @@ function cim_get_controller() {
     $controller = new SnapshotController();
   }
   return $controller;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function cim_permissions() {
+  return array(
+    'administer snapshots' => array(
+      'title' => t('Administer configuration snapshots'),
+    ),
+  );
 }
