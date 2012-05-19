@@ -5,6 +5,8 @@
  * Admin page callbacks for the cim module.
  */
 
+use Drupal\cim\Difference;
+
 /**
  * Menu callback; Snapshot list page.
  */
