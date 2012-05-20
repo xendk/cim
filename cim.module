@@ -60,7 +60,8 @@ function cim_menu() {
 
   $items[$root . '/snapshot/%cim_snapshot/revert'] = array(
     'title' => 'Revert',
-    'page callback' => 'cim_admin_snapshot_revert',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_revert_snapshot_form', 5),
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
     'access arguments' => array('administer snapshots'),

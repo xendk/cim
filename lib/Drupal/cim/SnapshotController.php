@@ -57,6 +57,21 @@ class SnapshotController {
     return FALSE;
   }
 
+  /**
+   * Applies the given changeset and creates a new snapshot.
+   */
+  public function apply(Changeset $changeset, $message = '') {
+    $config = new ConfigDrupalConfig();
+    if ($changeset->appliesTo($config)) {
+      $changeset->apply($config);
+      $config->commit();
+      return $this->save($message);
+    }
+    else {
+      throw new Exception('Changeset doesn\'t apply');
+    }
+  }
+
   public function loadCid($cid) {
     return db_select('cim', 'c', array('fetch' => 'Drupal\cim\Snapshot'))
       ->fields('c')
@@ -72,6 +87,13 @@ class SnapshotController {
       ->fields('c')
       ->condition('changeset_sha', $sha)
       ->execute()->fetch();
+  }
+
+  function revert(Snapshot $snapshot) {
+    $parent_snapshot = $this->load($snapshot->changeset_parent);
+    list($depth, $parent_dump) = $this->latestDump($parent_snapshot);
+    $snapshot_dump = $snapshot->changeset->apply(clone $parent_dump);
+    return Changeset::fromDiff($snapshot_dump, $parent_dump);
   }
 
   /**
@@ -152,6 +174,6 @@ class SnapshotController {
 
       return array($depth, $dump);
     }
-    return array(0, $snapshot->dump);
+    return array(0, new ConfigArray($snapshot->dump));
   }
 }

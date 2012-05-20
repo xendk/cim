@@ -72,6 +72,15 @@ class ConfigDrupalConfig implements ConfigInterface {
   }
 
   /**
+   * Commits changes to the config system.
+   */
+  function commit() {
+    foreach ($this->configs as $name => $config) {
+      $config->save();
+    }
+  }
+
+  /**
    * Implements ConfigInterface::toArray().
    */
   function toArray() {
