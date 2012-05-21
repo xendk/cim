@@ -271,6 +271,12 @@ function cim_admin_snapshot_view($snapshot) {
     '#title' => t('Snapshot information'),
   );
 
+  $build['meta']['message'] = array(
+    '#type' => 'item',
+    '#title' => t('Message'),
+    '#markup' => check_plain($snapshot->message),
+  );
+
   $build['meta']['changeset_sha'] = array(
     '#type' => 'item',
     '#title' => 'Changeset SHA',
