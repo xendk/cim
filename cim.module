@@ -6,7 +6,7 @@
  */
 
 use Drupal\cim\SnapshotController;
-
+use Drupal\cim\Difference;
 /**
  * Implements hook_menu().
  */
@@ -152,4 +152,48 @@ function theme_cim_admin_snapshot_overview($vars) {
     $output .= '<div class="message">' . filter_xss_admin($vars['message']) . '</div>';
   }
   return $output;
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function cim_element_info() {
+  return array(
+    'cim_changeset_view' => array(
+      '#input' => FALSE,
+      '#pre_render' => array('cim_process_changeset_view_pre_render'),
+    ),
+  );
+}
+
+/**
+ * Process cim_changeset_view element.
+ */
+function cim_process_changeset_view_pre_render($element) {
+  // Include the utility drupal_var_export() function.
+  include_once './core/includes/utility.inc';
+
+  $rows = array();
+  foreach ($element['#changeset']->changes() as $change) {
+    $rows[] = array(
+      join('.', $change->path),
+      $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
+      $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
+    );
+  }
+
+  $element['changes'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Changes'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+
+  $element['changes']['details'] = array(
+    '#theme' => 'table',
+    '#header' => array(t('Configuration key'), t('From'), t('To')),
+    '#rows' => $rows,
+  );
+
+  return $element;
 }

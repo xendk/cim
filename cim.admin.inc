@@ -58,16 +58,6 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
   $snapshot = cim_get_controller()->create();
 
   if ($snapshot) {
-    $changes = $snapshot->changeset->changes();
-    $rows = array();
-    foreach ($changes as $change) {
-      $rows[] = array(
-        join('.', $change->path),
-        $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
-        $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
-      );
-    }
-
     $form['intro'] = array(
       '#markup' => t('The new snapshot will consist of the changes below.'),
     );
@@ -79,18 +69,11 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
       '#maxlength' => 255,
     );
 
-    $form['changes'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Changes'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
+    $form['changeset'] = array(
+      '#type' => 'cim_changeset_view',
+      '#changeset' => $snapshot->changeset,
     );
 
-    $form['changes']['details'] = array(
-      '#theme' => 'table',
-      '#header' => array(t('Configuration key'), t('From'), t('To')),
-      '#rows' => $rows,
-    );
     return confirm_form($form, 'Create a new snapshot?', 'admin/config/development/cim');
   }
   else {
@@ -133,33 +116,16 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
       '#value' => $snapshot,
     );
 
-    // @todo rebase changeset.
-    $changes = $changeset->changes();
-    $rows = array();
-    foreach ($changes as $change) {
-      $rows[] = array(
-        join('.', $change->path),
-        $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
-        $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
-      );
-    }
 
     $form['intro'] = array(
       '#markup' => t('This will make the following changes.'),
     );
 
-    $form['changes'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Changes'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
+    $form['changeset'] = array(
+      '#type' => 'cim_changeset_view',
+      '#changeset' => $changeset,
     );
 
-    $form['changes']['details'] = array(
-      '#theme' => 'table',
-      '#header' => array(t('Configuration key'), t('From'), t('To')),
-      '#rows' => $rows,
-    );
     return confirm_form($form, 'Revert snapshot?', 'admin/config/development/cim');
   }
   else {
@@ -205,32 +171,15 @@ function cim_admin_rollback_snapshot_form($form, &$form_state, $snapshot) {
       '#value' => $snapshot,
     );
 
-    $changes = $changeset->changes();
-    $rows = array();
-    foreach ($changes as $change) {
-      $rows[] = array(
-        join('.', $change->path),
-        $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
-        $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
-      );
-    }
-
     $form['intro'] = array(
       '#markup' => t('This will make the following changes.'),
     );
 
     $form['changes'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Changes'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
+      '#type' => 'cim_changeset_view',
+      '#changeset' => $changeset,
     );
 
-    $form['changes']['details'] = array(
-      '#theme' => 'table',
-      '#header' => array(t('Configuration key'), t('From'), t('To')),
-      '#rows' => $rows,
-    );
     return confirm_form($form, 'Rollback snapshot?', 'admin/config/development/cim');
   }
   else {
@@ -302,27 +251,9 @@ function cim_admin_snapshot_view($snapshot) {
     );
   }
 
-  $changes = $snapshot->changeset->changes();
-  $rows = array();
-  foreach ($changes as $change) {
-    $rows[] = array(
-      join('.', $change->path),
-      $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
-      $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
-    );
-  }
-
-  $build['changes'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Changes'),
-    '#collapsible' => TRUE,
-    '#collapsed' => TRUE,
-  );
-
-  $build['changes']['details'] = array(
-    '#theme' => 'table',
-    '#header' => array(t('Configuration key'), t('From'), t('To')),
-    '#rows' => $rows,
+  $build['changeset'] = array(
+    '#type' => 'cim_changeset_view',
+    '#changeset' => $snapshot->changeset,
   );
 
   return $build;
