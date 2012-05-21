@@ -19,8 +19,8 @@ class SnapshotController {
   /**
    * Take a snapshot.
    */
-  public function save() {
-    $snapshot = $this->create();
+  public function save($message = '') {
+    $snapshot = $this->create($message);
     if ($snapshot) {
       drupal_write_record('cim', $snapshot);
       return TRUE;

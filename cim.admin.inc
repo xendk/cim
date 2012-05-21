@@ -13,10 +13,10 @@ use Drupal\cim\ConfigDrupalConfig;
 function cim_admin_list($sha = NULL) {
   $build = array();
   // Pseudo paging by asking for one too many.
-  $snapshots = cim_get_controller()->listing(11, $sha);
+  $snapshots = cim_get_controller()->listing(21, $sha);
   $next_page = FALSE;
 
-  if (sizeof($snapshots) > 10) {
+  if (sizeof($snapshots) > 20) {
     $next_page = TRUE;
     // Ignore the extra.
     array_pop($snapshots);
@@ -30,7 +30,7 @@ function cim_admin_list($sha = NULL) {
     $rows[] = array(
       $snapshot->cid,
       format_date($snapshot->created, 'short'),
-      l($snapshot->changeset_sha, 'admin/config/development/cim/snapshot/' . $snapshot->cid),
+      theme('cim_admin_snapshot_overview', array('sha' => $snapshot->changeset_sha, 'link' => 'admin/config/development/cim/snapshot/' . $snapshot->cid, 'message' => $snapshot->message)),
       $diff_stat,
     );
   }
@@ -171,7 +171,9 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
  * Reverts snapshot.
  */
 function cim_admin_revert_snapshot_form_submit($form, &$form_state) {
-  cim_get_controller()->apply($form_state['values']['changeset'], 'Reverts ' . $form_state['values']['snapshot']->changeset_sha);
+  $snapshot = $form_state['values']['snapshot'];
+  $message = 'Reverts "' . $snapshot->message . '" (' . $snapshot->changeset_sha . ')';
+  cim_get_controller()->apply($form_state['values']['changeset'], $message);
   drupal_set_message(t('Snapshot reverted.'));
   $form_state['redirect'] = 'admin/config/development/cim';
 }
@@ -241,7 +243,9 @@ function cim_admin_rollback_snapshot_form($form, &$form_state, $snapshot) {
  * Reverts snapshot.
  */
 function cim_admin_rollback_snapshot_form_submit($form, &$form_state) {
-  cim_get_controller()->apply($form_state['values']['changeset'], 'Rollback to ' . $form_state['values']['snapshot']->changeset_sha);
+  $snapshot = $form_state['values']['snapshot'];
+  $message = 'Rollback to "' . $snapshot->message . '" (' . $snapshot->changeset_sha . ')';
+  cim_get_controller()->apply($form_state['values']['changeset'], $message);
   drupal_set_message(t('Changes rolled back.'));
   $form_state['redirect'] = 'admin/config/development/cim';
 }
@@ -378,10 +382,10 @@ function cim_testing() {
 
   dpm(cim_get_controller()->save('Test initial') ? 'saved' : 'nothing to save');
   $config = config('system.performance');
-  for ($i = 1; $i < 10; $i++) {
+  for ($i = 1; $i < 5; $i++) {
     $config->set('cache', $i);
     $config->save();
-    dpm(cim_get_controller()->save('Set chaching to ' . $i) ? 'saved' : 'nothing to save');
+    dpm(cim_get_controller()->save('Set caching to ' . $i) ? 'saved' : 'nothing to save');
   }
   /* config('system.performance')-> */
   /* dpm($ssc->latest()); */

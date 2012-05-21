@@ -123,3 +123,33 @@ function cim_permissions() {
     ),
   );
 }
+
+/**
+ * Implements hook_theme().
+ */
+function cim_theme() {
+  return array(
+    'cim_admin_snapshot_overview' => array(
+      'variables' => array('sha' => NULL, 'message' => NULL),
+    ),
+  );
+}
+
+/**
+ * Returns HTML for a snapshot description for the snapshot listing admin page.
+ *
+ * @param $vars
+ *   An associative array containing:
+ *   - sha: Snapshot SHA.
+ *   - link: Path to the snapshot page.
+ *   - message: The logged message of the snapshot.
+ *
+ * @ingroup themeable
+ */
+function theme_cim_admin_snapshot_overview($vars) {
+  $output = l($vars['sha'], $vars['link']);
+  if ($vars['message']) {
+    $output .= '<div class="message">' . filter_xss_admin($vars['message']) . '</div>';
+  }
+  return $output;
+}

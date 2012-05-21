@@ -38,7 +38,9 @@ class Snapshot {
     if (!isset($this->uid)) {
       $this->uid = $user->uid;
     }
-    $this->message = $message;
+    if (!isset($this->message)) {
+      $this->message = $message;
+    }
   }
 
   public function setChangeset($changeset) {

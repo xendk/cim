@@ -13,7 +13,7 @@ function cim_install() {
   // @todo Figure out if there's a way to notify the user when manually enabling
   // the module, but not if enabled in an install profile (that's kinda
   // annoying).
-  cim_get_controller()->save();
+  cim_get_controller()->save('Initial snapshot at install time.');
 }
 /**
  * Implements hook_schema().
