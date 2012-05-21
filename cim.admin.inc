@@ -72,6 +72,13 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
       '#markup' => t('The new snapshot will consist of the changes below.'),
     );
 
+    $form['message'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Message'),
+      '#default_value' => 'Manual snapshot without a message.',
+      '#maxlength' => 255,
+    );
+
     $form['changes'] = array(
       '#type' => 'fieldset',
       '#title' => t('Changes'),
@@ -101,9 +108,9 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
  * Creates a new snapshot.
  */
 function cim_admin_create_snapshot_form_submit($form, &$form_state) {
-  cim_get_controller()->save();
+  cim_get_controller()->save($form_state['values']['message']);
   $form_state['redirect'] = 'admin/config/development/cim';
-  drupal_set_message(t('Snapshot saved.'));
+  drupal_set_message(t('Snapshot "@message" saved.', array('@message' => $form_state['values']['message'])));
 }
 
 /**
