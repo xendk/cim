@@ -92,11 +92,15 @@ function cim_snapshot_load($cid) {
 /**
  * Menu access function.
  *
- * Returns TRUE if snapshot has a parent and user has 'administer snapshots'
- * permission.
+ * Returns TRUE if snapshot has a parent, isn't the latest snapshot and user has
+ * 'administer snapshots' permission.
  */
 function cim_snapshot_access($snapshot) {
-  if (!empty($snapshot->changeset_parent) && user_access('administer snapshots')) {
+  $latest = &drupal_static(__FUNCTION__, NULL);
+  if (!$latest) {
+    $latest = cim_get_controller()->latest();
+  }
+  if (user_access('administer snapshots') && !empty($snapshot->changeset_parent) && $snapshot->cid != $latest->cid) {
     return TRUE;
   }
   return FALSE;
