@@ -50,7 +50,7 @@ class Changeset {
           ${$var} = ${$var}->toArray();
         }
         else {
-          throw new Exception("Argument to diff not an array or instance of ConfigInterface.");
+          throw new \Exception("Argument to diff not an array or instance of ConfigInterface.");
         }
       }
     }

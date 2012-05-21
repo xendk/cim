@@ -64,7 +64,18 @@ function cim_menu() {
     'page arguments' => array('cim_admin_revert_snapshot_form', 5),
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
-    'access arguments' => array('administer snapshots'),
+    'access callback' => 'cim_snapshot_access',
+    'access arguments' => array(5),
+  );
+
+  $items[$root . '/snapshot/%cim_snapshot/rollback'] = array(
+    'title' => 'Rollback',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_rollback_snapshot_form', 5),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access callback' => 'cim_snapshot_access',
+    'access arguments' => array(5),
   );
 
   return $items;
@@ -76,6 +87,19 @@ function cim_menu() {
 function cim_snapshot_load($cid) {
   $ssc = new SnapshotController();
   return $ssc->loadCid($cid);
+}
+
+/**
+ * Menu access function.
+ *
+ * Returns TRUE if snapshot has a parent and user has 'administer snapshots'
+ * permission.
+ */
+function cim_snapshot_access($snapshot) {
+  if (!empty($snapshot->changeset_parent) && user_access('administer snapshots')) {
+    return TRUE;
+  }
+  return FALSE;
 }
 
 /**

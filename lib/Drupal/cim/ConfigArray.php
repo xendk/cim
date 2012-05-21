@@ -21,7 +21,7 @@ class ConfigArray implements ConfigInterface {
    */
   function __construct($array) {
     if (!is_array($array)) {
-      throw new Exception('Non-array passed to ConfigArray::__construct.');
+      throw new \Exception('Non-array passed to ConfigArray::__construct.');
     }
     $this->config = $array;
   }

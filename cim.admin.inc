@@ -103,6 +103,7 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
 function cim_admin_create_snapshot_form_submit($form, &$form_state) {
   cim_get_controller()->save();
   $form_state['redirect'] = 'admin/config/development/cim';
+  drupal_set_message(t('Snapshot saved.'));
 }
 
 /**
@@ -114,7 +115,7 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
 
   $config = new ConfigDrupalConfig();
   $changeset = cim_get_controller()->revert($snapshot);
-  if ($changeset->appliesTo($config)) {
+  if ($changeset && $changeset->appliesTo($config)) {
     $form['changeset'] = array(
       '#type' => 'value',
       '#value' => $changeset,
@@ -171,8 +172,80 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
  */
 function cim_admin_revert_snapshot_form_submit($form, &$form_state) {
   cim_get_controller()->apply($form_state['values']['changeset'], 'Reverts ' . $form_state['values']['snapshot']->changeset_sha);
+  drupal_set_message(t('Snapshot reverted.'));
   $form_state['redirect'] = 'admin/config/development/cim';
 }
+
+/**
+ * Form callback; Rollback snapshot.
+ */
+function cim_admin_rollback_snapshot_form($form, &$form_state, $snapshot) {
+  // Include the utility drupal_var_export() function.
+  include_once './core/includes/utility.inc';
+
+  $config = new ConfigDrupalConfig();
+  $changeset = cim_get_controller()->rollback($snapshot);
+  if ($changeset && $changeset->appliesTo($config)) {
+    $form['changeset'] = array(
+      '#type' => 'value',
+      '#value' => $changeset,
+    );
+
+    $form['snapshot'] = array(
+      '#type' => 'value',
+      '#value' => $snapshot,
+    );
+
+    $changes = $changeset->changes();
+    $rows = array();
+    foreach ($changes as $change) {
+      $rows[] = array(
+        join('.', $change->path),
+        $change->a === Difference::NULL ? check_plain('<unset>') : (is_array($change->a) ? '<pre>' . drupal_var_export($change->a) . '</pre>' : check_plain($change->a)),
+        $change->b === Difference::NULL ? check_plain('<unset>') : (is_array($change->b) ? '<pre>' . drupal_var_export($change->b) . '</pre>' : check_plain($change->b)),
+      );
+    }
+
+    $form['intro'] = array(
+      '#markup' => t('This will make the following changes.'),
+    );
+
+    $form['changes'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Changes'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+
+    $form['changes']['details'] = array(
+      '#theme' => 'table',
+      '#header' => array(t('Configuration key'), t('From'), t('To')),
+      '#rows' => $rows,
+    );
+    return confirm_form($form, 'Rollback snapshot?', 'admin/config/development/cim');
+  }
+  else {
+    // @todo Conflict resolution.
+    $form['message'] = array(
+      '#markup' => t('Cannot rollback this snapshot, local changes conflicts.'),
+    );
+
+    return $form;
+  }
+}
+
+
+/**
+ * Submit handler.
+ *
+ * Reverts snapshot.
+ */
+function cim_admin_rollback_snapshot_form_submit($form, &$form_state) {
+  cim_get_controller()->apply($form_state['values']['changeset'], 'Rollback to ' . $form_state['values']['snapshot']->changeset_sha);
+  drupal_set_message(t('Changes rolled back.'));
+  $form_state['redirect'] = 'admin/config/development/cim';
+}
+
 
 /**
  * Menu callback; Show snapshot page.

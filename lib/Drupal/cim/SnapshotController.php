@@ -68,7 +68,7 @@ class SnapshotController {
       return $this->save($message);
     }
     else {
-      throw new Exception('Changeset doesn\'t apply');
+      throw new \Exception('Changeset doesn\'t apply');
     }
   }
 
@@ -92,8 +92,18 @@ class SnapshotController {
   function revert(Snapshot $snapshot) {
     $parent_snapshot = $this->load($snapshot->changeset_parent);
     list($depth, $parent_dump) = $this->latestDump($parent_snapshot);
-    $snapshot_dump = $snapshot->changeset->apply(clone $parent_dump);
+    /* This could also be done with:
+     * $snapshot_dump = $snapshot->changeset->apply(clone $parent_dump);
+     */
+    list($depth, $snapshot_dump) = $this->latestDump($snapshot);
     return Changeset::fromDiff($snapshot_dump, $parent_dump);
+  }
+
+  function rollback(Snapshot $snapshot) {
+    $latest_snapshot = $this->latest();
+    list($depth, $snapshot_dump) = $this->latestDump($snapshot);
+    list($depth, $latest_dump) = $this->latestDump($latest_snapshot);
+    return Changeset::fromDiff($latest_dump, $snapshot_dump);
   }
 
   /**
@@ -142,15 +152,15 @@ class SnapshotController {
   /**
    * Get a config dump from a changeset.
    *
-   * Finds the last full dump and applies the following changesets, up to the
-   * supplied changset.
+   * Finds the last full dump and applies the following changesets, up to and
+   * including the supplied changset.
    */
   public function latestDump($snapshot) {
     if (empty($snapshot->dump)) {
       $last_full = $this->loadCid($snapshot->previous_dump);
 
       if (empty($last_full)) {
-        throw new Exception('CIM: Broken history, could not find base dump.');
+        throw new \Exception('CIM: Broken history, could not find base dump.');
       }
 
       // Load snapshots between last full dump and current.
@@ -165,7 +175,7 @@ class SnapshotController {
       $current_snapshot = $last_full;
       do {
         if (!isset($snapshots[$current_snapshot->changeset_sha])) {
-          throw new Exception('CIM: Broken history.');
+          throw new \Exception('CIM: Broken history.');
         }
         $current_snapshot = $snapshots[$current_snapshot->changeset_sha];
         $dump = $current_snapshot->changeset->apply($dump);
