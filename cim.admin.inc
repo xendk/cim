@@ -531,16 +531,18 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
   $crypt = new Crypt(cim_keys(), $upstream['public_key']);
   $response = $crypt->decrypt(base64_decode($response['response']));
 
-  // Create a ConfigArray corresponding to the upstream config.
-  $upstream_conf = new ConfigArray(array());
-  $response['changeset']->apply($upstream_conf);
+  if (!empty($response['changeset'])) {
+    // Create a ConfigArray corresponding to the upstream config.
+    $upstream_conf = new ConfigArray(array());
+    $response['changeset']->apply($upstream_conf);
 
-  // Create a changeset we can use by taking the difference between our config
-  // and upstreams.
-  $config = new ConfigDrupalConfig();
-  $new_changeset = Changeset::fromDiff($config, $upstream_conf);
+    // Create a changeset we can use by taking the difference between our config
+    // and upstreams.
+    $config = new ConfigDrupalConfig();
+    $new_changeset = Changeset::fromDiff($config, $upstream_conf);
+  }
 
-  if ($new_changeset) {
+  if (!empty($new_changeset)) {
     $form['intro'] = array(
       '#markup' => t('Pull the following configuration changes?'),
     );
