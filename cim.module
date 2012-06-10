@@ -7,6 +7,10 @@
 
 use Drupal\cim\SnapshotController;
 use Drupal\cim\Difference;
+use Drupal\cim\Changeset;
+use Drupal\cim\Crypt;
+use Drupal\cim\Response;
+
 /**
  * Implements hook_menu().
  */
@@ -17,6 +21,15 @@ function cim_menu() {
     'title' => 'Configuration Interchange and Management',
     'page callback' => 'cim_admin_list',
     'access arguments' => array('administer snapshots'),
+    'file' => 'cim.admin.inc',
+  );
+
+  $items[$root . '/authenticate'] = array(
+    'title' => 'CIM authentication',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_authenticate_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
     'file' => 'cim.admin.inc',
   );
 
@@ -76,6 +89,29 @@ function cim_menu() {
     'file' => 'cim.admin.inc',
     'access callback' => 'cim_snapshot_access',
     'access arguments' => array(5),
+  );
+
+  $items[$root . '/upstream'] = array(
+    'title' => 'Upstream',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_add_upstream_form'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access arguments' => array('administer snapshots'),
+  );
+
+  $items[$root . '/upstream/setup'] = array(
+    'title' => 'Setup',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+
+  $items[$root . '/upstream/pull'] = array(
+    'title' => 'Pull configuration',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_pull_confirm_form'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access arguments' => array('administer snapshots'),
   );
 
   return $items;
@@ -200,4 +236,307 @@ function cim_process_changeset_view_pre_render($element) {
   );
 
   return $element;
+}
+
+function cim_xmlrpc() {
+  return array(
+    array(
+      'cim.authenticate',
+      'cim_xmlrpc_authenticate',
+      array('struct', 'struct'),
+      '',
+    ),
+
+    array(
+      'cim.request',
+      'cim_xmlrpc_request',
+      array('string', 'string'),
+      '',
+    ),
+    array(
+      'cim.push_changeset',
+      'cim_xmlrpc_push_changeset',
+      array('boolean', 'string'),
+      '',
+    ),
+  );
+}
+
+function cim_xmlrpc_ping($version) {
+  $response = array(
+    'status' => '',
+    'message' => '',
+  );
+  // Check for supported version.
+  if ($version == 1) {
+    $response['status'] = 'OK';
+    $response['uri'] = url('admin/config/development/cim/authenticate', array('absolute' => TRUE));
+  }
+  else {
+    $response['status'] = 'ERR';
+    $response['message'] = 'Unsupported protocol version.';
+  }
+  return $response;
+}
+
+function cim_xmlrpc_authenticate($request) {
+  $request += array(
+    'public_key' => '',
+    'return_url' => '',
+    'signature' => '',
+    'version' => '',
+    'core' => '',
+  );
+
+  if ($request['core'] != 8) {
+    return Response::error('Core version mismatch.');
+  }
+  if ($request['version'] != 1) {
+    return Response::error('Unsupported protocol version.');
+  }
+
+  $keys = cim_keys();
+  $crypt = new Crypt($keys, $request['public_key']);
+
+  // Check sig...
+  if (empty($request['signature'])) {
+    return Response::error('Request not signed.');
+  }
+  $signature = base64_decode($request['signature']);
+  unset($request['signature']);
+  ksort($request);
+  /*
+   * Checking the signature with the public key contained in the request might
+   * seem odd, but it ensures that the request was created by the peer with the
+   * corresponding private key.
+   */
+  if (!$crypt->verify(serialize($request), $signature)) {
+    return Response::error('Signature invalid.');
+  }
+
+  $peer_id = hash('sha256', $request['public_key']);
+  /*
+   * Create a token for this authentication.  Uses the key to make it
+   * unguessable, REQUEST_TIME to make it change over time, and peer id to allow
+   * auth requests from different peers in the same second.
+   */
+  $token = hash('sha256', $keys[0] . $peer_id . REQUEST_TIME);
+
+  cache()->set('cim_auth:' . $token, $request, REQUEST_TIME + 3600);
+
+  $response = array(
+    'token' => $token,
+    'authenticate_url' => url('admin/config/development/cim/authenticate', array('absolute' => TRUE)),
+    'public_key' => $crypt->getPublicKey(),
+  );
+
+  $response = $crypt->encrypt(serialize($response));
+  if ($response) {
+    return Response::success($response);
+  }
+  return Response::error('Internal error');
+}
+
+function cim_peer_request($request) {
+  if (!file_exists(cim_peer_directory() . '/upstream')) {
+    throw new Exception('No upstream.');
+  }
+  $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+  if (!($peer = cim_peer($peer_id))) {
+    throw new Exception('No upstream.');
+  }
+
+  $crypt = new Crypt(cim_keys(), $peer['public_key']);
+  $message = array(
+    'request' => $crypt->encrypt($request),
+    'peer_id' => hash('sha256', $crypt->getPublicKey()),
+  );
+
+  return cim_request($peer['url'], $message);
+}
+
+function cim_request($site, $request) {
+  $url = $site . 'core/xmlrpc.php';
+  $request = base64_encode(serialize($request));
+  $response = xmlrpc($url, array('cim.request' => array($request)));
+  return $response;
+}
+
+function cim_xmlrpc_request($request) {
+  $request = unserialize(base64_decode($request));
+  $request += array(
+    'action' => '',
+  );
+
+  $keys = cim_keys();
+  $crypt = new Crypt($keys);
+  // Authenticate is the only request not encrypted.
+  if ($request['action'] != 'authenticate') {
+    $request += array(
+      'request' => '',
+      'peer_id' => '',
+    );
+
+    $peer = cim_peer($request['peer_id']);
+    if (!$peer) {
+      return Response::error('Unknown peer.');
+    }
+    $crypt->setPeerKey($peer['public_key']);
+    if (!($request = $crypt->decrypt($request['request']))) {
+      return Response::error('Cannot decrypt request.');
+    }
+  }
+  else {
+    $request += array(
+      'public_key' => '',
+      'return_url' => '',
+      'signature' => '',
+      'version' => '',
+      'core' => '',
+    );
+
+    $crypt->setPeerKey($request['public_key']);
+    // Check sig...
+    if (empty($request['signature'])) {
+      return Response::error('Request not signed.');
+    }
+    $signature = $request['signature'];
+    unset($request['signature']);
+    ksort($request);
+    /*
+     * Checking the signature with the public key contained in the request might
+     * seem odd, but it ensures that the request was created by the peer with
+     * the corresponding private key.
+     */
+    if (!$crypt->verify(serialize($request), $signature)) {
+      return Response::error('Signature invalid.');
+    }
+  }
+
+  if (in_array($request['action'], array('authenticate', 'pull', 'push_changeset'))) {
+    $func = 'cim_request_' . $request['action'];
+    return $func($crypt, $request);
+  }
+  else {
+    return Response::error('Unsupported action.');
+  }
+}
+
+function cim_request_authenticate($crypt, $request) {
+  $request += array(
+    'public_key' => '',
+    'return_url' => '',
+    'signature' => '',
+    'version' => '',
+    'core' => '',
+  );
+  $peer_id = hash('sha256', $request['public_key']);
+  /*
+   * Create a token for this authentication.  Uses the key to make it
+   * unguessable, REQUEST_TIME to make it change over time, and peer id to allow
+   * auth requests from different peers in the same second.
+   */
+  $token = hash('sha256', $keys[0] . $peer_id . REQUEST_TIME);
+
+  cache()->set('cim_auth_upstream:' . $token, $request, REQUEST_TIME + 3600);
+
+  $response = array(
+    'token' => $token,
+    'authenticate_url' => url('admin/config/development/cim/authenticate', array('absolute' => TRUE)),
+    'public_key' => $crypt->getPublicKey(),
+  );
+
+  $response = $crypt->seal(serialize($response));
+  if ($response) {
+    return Response::success(serialize($response));
+  }
+  return Response::error('Internal error');
+}
+
+function cim_request_pull($crypt, $request) {
+  if (!($snapshot = cim_get_controller()->create())) {
+    $snapshot = cim_get_controller()->latest();
+  }
+  $res = cim_get_controller()->latestDump($snapshot);
+
+  $response = array(
+    'changeset' => Changeset::fromDiff(array(), $res[1]),
+  );
+
+  $response = $crypt->encrypt($response);
+  if ($response) {
+    return Response::success($response);
+  }
+  return Response::error('Internal error');
+}
+
+function cim_request_push_changeset($request) {
+  // @todo switch user.
+
+  $changeset = !empty($request['changeset']) ? $request['changeset'] : NULL;
+  $message = !empty($request['message']) ? $request['message'] : '';
+
+  if (!($changeset instanceof Changeset)) {
+    watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
+  }
+
+  $config = new ConfigDrupalConfig();
+
+  if (!$changeset->appliesTo($config)) {
+    // Doesn't apply. Return error.
+    return Response::success(array(''));
+  }
+
+  cim_get_controller()->apply($changeset, $message);
+}
+
+// @todo proper key storage.
+function cim_keys() {
+  $keys = &drupal_static(__FUNCTION__);
+  // @todo not convinced that using the php extension is a safe bet, this needs
+  // more investigation
+  $path = config_get_config_directory() . '/cim_key.php';
+  if (!file_exists($path)) {
+    $crypto = new Crypt();
+    $crypto->keyGen();
+    $keys = $crypto->getKeyPair();
+    $php = "<?php\n\n\$keys = " . var_export($keys, TRUE) . ";\n";
+    file_put_contents($path, $php);
+  }
+  else {
+    include $path;
+  }
+  return $keys;
+}
+
+function cim_peer($peer_id) {
+  $crypt = new Crypt(cim_keys());
+  $peer_file = cim_peer_directory() . '/' . $peer_id;
+  if (file_exists($peer_file)) {
+    $peer = unserialize(file_get_contents($peer_file));
+    $crypt->setPeerKey($crypt->getPublicKey());
+    $signature = $peer['signature'];
+    unset($peer['signature']);
+    ksort($peer);
+    if ($crypt->verify($peer, $signature)) {
+      return $peer;
+    }
+  }
+  return FALSE;
+}
+
+function cim_upstream() {
+  if (!file_exists(cim_peer_directory() . '/upstream')) {
+    throw new Exception('No upstream.');
+  }
+  $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+  if (!($peer = cim_peer($peer_id))) {
+    throw new Exception('No upstream.');
+  }
+  return $peer;
+}
+
+function cim_peer_directory() {
+  $crypt = new Crypt(cim_keys());
+  return config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey());
 }

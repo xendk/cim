@@ -23,7 +23,7 @@ class SnapshotController {
     $snapshot = $this->create($message);
     if ($snapshot) {
       drupal_write_record('cim', $snapshot);
-      return TRUE;
+      return $snapshot;
     }
     return FALSE;
   }

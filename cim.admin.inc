@@ -6,7 +6,11 @@
  */
 
 use Drupal\cim\Difference;
+use Drupal\cim\Changeset;
+use Drupal\cim\ConfigArray;
 use Drupal\cim\ConfigDrupalConfig;
+use Drupal\cim\Crypt;
+
 /**
  * Menu callback; Snapshot list page.
  */
@@ -259,79 +263,349 @@ function cim_admin_snapshot_view($snapshot) {
   return $build;
 }
 
+function cim_admin_authenticate_form($form, &$form_state) {
+  global $user;
+
+  if (empty($_GET['token']) || empty($_GET['sig'])) {
+    $form['message'] = array(
+      '#markup' => t('Missing parameters. Possibly incompatible version of CIM?'),
+    );
+    return $form;
+  }
+  $token = $_GET['token'];
+  $signature = $_GET['sig'];
+  $signature = base64_decode($signature);
+
+  // We ensure that we're only run once by deleting the cache entry right away,
+  // using locking to guard against race conditions.
+  while (!lock_acquire('cim_admin_authenticate')) {
+    if (lock_wait('cim_admin_authenticate', 15)) {
+      $form['message'] = array(
+        '#markup' => t('Could not acquire lock. Refresh to retry.'),
+      );
+      return $form;
+    }
+  }
+  if ($cache = cache()->get('cim_auth_upstream:' . $token)) {
+    cache()->delete('cim_auth_upstream:' . $token);
+    lock_release('cim_admin_authenticate');
+    $crypt = new Crypt(cim_keys(), $cache->data['public_key']);
+    if (!$crypt->verify($token, $signature)) {
+      $form['message'] = array(
+        '#markup' => t('Signature did not verify.'),
+      );
+      return $form;
+    }
+    $form_state['cache'] = TRUE;
+    $form_state['cim_peer_data'] = $cache->data;
+    $form_state['cim_peer_data']['token'] = $token;
+  }
+  lock_release('cim_admin_authenticate');
+
+
+  $name = $_SERVER['HTTP_HOST'];
+  drupal_set_title(t("CIM authentication at @name", array('@name' => $name)));
+
+  // Show a banner so it is obvious where the user are.
+  $form['intro'] = array(
+    '#markup' => '<p>' . t('This is @name', array('@name' => $name)) . '</p>',
+  );
+
+  if ($user->uid < 1) {
+    // No user logged in, throw them past the login form.
+    drupal_goto('user/login', array('query' => drupal_get_destination()));
+  }
+  else {
+    // Check for permissions.
+    if (user_access('administer snapshots', $user)) {
+      $form['you'] = array(
+        '#markup' => '<p>' . t('You are logged in as @name.', array('@name' => user_format_name($user))) . '</p>',
+      );
+    }
+  }
+
+  $form['downstream_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name for downstream'),
+    '#description' => t('Provide a name that @name should know downstream by.', array('@name' => $name)),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save configuration'),
+  );
+
+  return $form;
+}
+
+/**
+ *
+ */
+function cim_admin_authenticate_form_validate($form, &$form_state) {
+  // @todo check that $form_state['values']['downstream_name'] haven't been used.
+  $directory = cim_peer_directory();
+  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
+  };
+}
+
+/**
+ * Form submit.
+ * Save peer data.
+ */
+function cim_admin_authenticate_form_submit($form, &$form_state) {
+  global $user;
+  $crypt = new Crypt(cim_keys());
+
+  if (empty($form_state['cim_peer_data'])) {
+    drupal_set_message(t('Token not active. Please retry authentication from the downstream.'), 'error');
+    return;
+  }
+  $peer_file = cim_peer_directory() . '/' . hash('sha256', $form_state['cim_peer_data']['public_key']);
+
+  $data = array(
+    'name' => $form_state['values']['downstream_name'],
+    'uid' => $user->uid,
+    'public_key' => $form_state['cim_peer_data']['public_key'],
+  );
+  ksort($data);
+  $data['signature'] = $crypt->sign($data);
+  file_put_contents($peer_file, serialize($data));
+
+  $form_state['redirect'] = array(
+    $form_state['cim_peer_data']['return_url'],
+    array(
+      'query' => array(
+        'token' => $form_state['cim_peer_data']['token'],
+        'sig' => base64_encode($crypt->sign($form_state['cim_peer_data']['token'])),
+      ),
+    ),
+  );
+}
+
+function cim_admin_add_upstream_form($form, &$form_state) {
+  // @todo this could do with a cleanup.
+  if (!empty($_GET['token']) || !empty($_GET['sig'])) {
+    $token = $_GET['token'];
+    $signature = $_GET['sig'];
+    $signature = base64_decode($signature);
+
+    // Not as paranoid here as on upstream.
+    if ($cache = cache()->get('cim_auth_downstream:' . $token)) {
+      cache()->delete('cim_auth_downstream:' . $token);
+      $crypt = new Crypt(cim_keys(), $cache->data['public_key']);
+      if (!$crypt->verify($token, $signature)) {
+        $form['message'] = array(
+          '#markup' => t('Signature did not verify.'),
+        );
+        return $form;
+      }
+      // Verified, save it.
+      $peer_id = hash('sha256', $cache->data['public_key']);
+      $peer_file = cim_peer_directory() . '/' . $peer_id;
+
+      $data = array(
+        'name' => $cache->data['upstream_name'],
+        'public_key' => $cache->data['public_key'],
+        'url' => $cache->data['upstream_url'],
+      );
+      $data['signature'] = $crypt->sign($data);
+      file_put_contents($peer_file, serialize($data));
+      // Really, there's no reason we shouldn't be able to support multiple
+      // upstreams, but let's keep it simple to start with.
+      file_put_contents(cim_peer_directory() . '/upstream', $peer_id);
+    }
+    else {
+      $form['message'] = array(
+        '#markup' => t('Unknown token, it could be timed out?'),
+      );
+      return $form;
+    }
+  }
+
+  $name = '';
+  $url = '';
+  if (file_exists(cim_peer_directory() . '/upstream')) {
+    $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+    if ($peer = cim_peer($peer_id)) {
+      $name = $peer['name'];
+      $url = $peer['url'];
+    }
+  }
+
+  $form['upstream_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name for upstream.'),
+    '#default_value' => $name,
+  );
+
+  $form['url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Upstream url'),
+    '#default_value' => $url,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    // @todo better name.
+    '#value' => t('Authenticate at upstream'),
+  );
+
+  return $form;
+}
+
+function cim_admin_add_upstream_form_validate($form, &$form_state) {
+
+  // Make sure that there's a peer directory we can use.
+  $directory = cim_peer_directory();
+  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
+  };
+
+  $crypt = new Crypt(cim_keys());
+
+  $request = array(
+    'action' => 'authenticate',
+    'core' => 8,
+    'version' => 1,
+    'public_key' => $crypt->getPublicKey(),
+    'return_url' => url('admin/config/development/cim/upstream', array('absolute' => TRUE)),
+  );
+  ksort($request);
+  $request['signature'] = $crypt->sign(serialize($request));
+  $auth_response = cim_request($form_state['values']['url'], $request);
+
+  if ($auth_response['status'] == 'OK') {
+    if (empty($auth_response['response']) || !($res = unserialize(base64_decode($auth_response['response'])))) {
+      form_error($form['url'], t('Could not decode upstream response.'));
+    }
+    $res = unserialize($crypt->open($res['data'], $res['envelope']));
+    // Extra sanity check.
+    if (!empty($res['token']) && !empty($res['public_key']) && !empty($res['authenticate_url'])) {
+      $res['upstream_name'] = $form_state['values']['upstream_name'];
+      $res['upstream_url'] = $form_state['values']['url'];
+      // Cache the response for later.
+      cache()->set('cim_auth_downstream:' . $res['token'], $res, REQUEST_TIME + 3600);
+      $form_state['cim_auth_res'] = $res;
+    }
+    else {
+      // Include the utility drupal_var_export() function.
+      include_once './core/includes/utility.inc';
+      watchdog('cim', 'Malformed authentication response: @response', array(drupal_var_export($res)), WATCHDOG_ERROR);
+      form_error($form['url'], t('Malformed upstream response.'));
+    }
+  }
+  else {
+    if (!empty($auth_response['message'])) {
+      $message = t('Upstream reported an error: @message', array('@message' => $auth_response['message']));
+    }
+    else {
+      $message = t("Upstream encountered an error, but didn't provide an error message");
+    }
+    form_error($form['url'], $message);
+  }
+}
+
+function cim_admin_add_upstream_form_submit($form, &$form_state) {
+  if ($auth_res = $form_state['cim_auth_res']) {
+    $crypt = new Crypt(cim_keys());
+    $form_state['redirect'] = array(
+      $auth_res['authenticate_url'],
+      array(
+        'query' => array(
+          'token' => $auth_res['token'],
+          'sig' => base64_encode($crypt->sign($auth_res['token'])),
+        ),
+      ),
+    );
+  }
+}
+
+function cim_admin_pull_confirm_form($form, &$form_state) {
+  $request = array(
+    'action' => 'pull',
+  );
+  $response = cim_peer_request($request);
+  $upstream = cim_upstream();
+  // @todo: Way too much magic handwaving in these 2 lines...
+  $crypt = new Crypt(cim_keys(), $upstream['public_key']);
+  $response = $crypt->decrypt(base64_decode($response['response']));
+
+  // Create a ConfigArray corresponding to the upstream config.
+  $upstream_conf = new ConfigArray(array());
+  $response['changeset']->apply($upstream_conf);
+
+  // Create a changeset we can use by taking the difference between our config
+  // and upstreams.
+  $config = new ConfigDrupalConfig();
+  $new_changeset = Changeset::fromDiff($config, $upstream_conf);
+
+  if ($new_changeset) {
+    $form['intro'] = array(
+      '#markup' => t('Pull the following configuration changes?'),
+    );
+
+    $form['message'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Message'),
+      '#default_value' => 'Pulled from ' . $upstream['name'] . '.',
+      '#maxlength' => 255,
+    );
+
+    $form['changeset'] = array(
+      '#type' => 'cim_changeset_view',
+      '#changeset' => $new_changeset,
+    );
+
+    // @todo: Could the changeset element above not be an #input element?
+    $form['new_changeset'] = array(
+      '#type' => 'value',
+      '#value' => $new_changeset,
+    );
+
+    return confirm_form($form, 'Pull configuration?', 'admin/config/development/cim');
+  }
+  else {
+    $form['message'] = array(
+      '#markup' => t('Configuration is in sync with upstream.'),
+    );
+    return $form;
+  }
+}
+
+function cim_admin_pull_confirm_form_submit($form, &$form_state) {
+  cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
+  drupal_set_message('Configuration pulled from upstream.');
+}
+
 /**
  * Menu callback; Testing page.
  *
  * @todo not for release.
  */
 function cim_testing() {
-  /* $config_snapshot = new Config(); */
-  /* $b = $config_snapshot->toArray(); */
-  /* $a = cim_take_snapshot(); */
-  /* $b = cim_take_snapshot(); */
-  /* $b['image.style.thumbnail']['effects'] = array( */
-  /*   'image_scale_200_200_1' => array( */
-  /*     'name' => 'image_scale', */
-  /*     'ieid' => 'image_scale_200_200_1', */
-  /*     'data' => array( */
-  /*       'width' => '200', */
-  /*       'height' => '200', */
-  /*       'upscale' => '1', */
-  /*     ), */
-  /*     'weight' => '0', */
-  /*   ), */
-  /* ); */
-  /* $b['system.performance']['cache'] = 1; */
-  /* $b_snapshot = new ArraySnapshot($b); */
-
-  /* $b['system.performance']['cache'] = "5"; */
-  /* $c_snapshot = new ArraySnapshot($b); */
-  /* /\* dpm(cim_diff($a, $b)); *\/ */
-  /* /\* dpm(cim_diff(array(), $b)); *\/ */
-  /* /\* dpm($a); *\/ */
-  /* $cs = Changeset::fromDiff($config_snapshot->toArray(), $b_snapshot->toArray()) */;
-  /* dpm($cs); */
-  /* dpm($cs->appliesTo($config_snapshot) ? 'true' : 'false'); */
-  /* dpm($cs->appliesTo($b_snapshot) ? 'true' : 'false'); */
-  /* dpm($cs->appliesTo($c_snapshot) ? 'true' : 'false'); */
-
-  /* $test_snapshot = new ArraySnapshot($config_snapshot->toArray()); */
-  /* $test_snapshot = $config_snapshot; */
-  /* dpm($test_snapshot->toArray()); */
-  /* dpm($cs); */
-  /* $cs->apply($test_snapshot); */
-  /* dpm($test_snapshot->toArray()); */
-
+  /* dpm(cim_get_controller()->save('Test initial') ? 'saved' : 'nothing to save'); */
   /* $config = config('system.performance'); */
-  /* $config->set('cache', "30"); */
-  /* $config_snapshot->configs['system.performance']->set('cache', '30'); */
+  /* for ($i = 1; $i < 5; $i++) { */
+  /*   $config->set('cache', $i); */
+  /*   $config->save(); */
+  /*   dpm(cim_get_controller()->save('Set caching to ' . $i) ? 'saved' : 'nothing to save'); */
+  /* } */
 
-  /* dpm($cs->appliesTo($config_snapshot) ? 'true' : 'false'); */
-  /* $b['system.performance']['cache_lifetime'] = '300'; */
-  /* $cs3 = Changeset::fromDiff($a, $b); */
-  /* dpm($cs->appliesTo($a) ? 'true' : 'false'); */
-  /* dpm($cs->appliesTo($b) ? 'true' : 'false'); */
-  /* $c = $cs->apply($a); */
-  /* dpm($cs->appliesTo($c) ? 'true' : 'false'); */
-  /* dpm($c); */
-  /* dpm($b); */
-  /* dpm($cs); */
-  /* $cs2 = Changeset::fromDiff(array(), $b); */
-  /* dpm($cs2->appliesTo($c) ? 'true' : 'false'); */
-  /* dpm($cs3->appliesTo($c) ? 'true' : 'false'); */
-  /* /\* dpm($cs2); *\/ */
-  /* dpm($cs->identifier()); */
-  /* dpm($cs2->identifier()); */
-  /* dpm($cs3->identifier()); */
+  $c1 = new Crypt();
+  $c2 = new Crypt();
+  $c1->keyGen(); $c2->keyGen();
+  $c1->setPeerKey($c2->getPublicKey());
+  $c2->setPeerKey($c1->getPublicKey());
+  /* $c1->peer_public_key = $c2->public_key; */
+  /* $c2->peer_public_key = $c1->public_key; */
 
-  dpm(cim_get_controller()->save('Test initial') ? 'saved' : 'nothing to save');
-  $config = config('system.performance');
-  for ($i = 1; $i < 5; $i++) {
-    $config->set('cache', $i);
-    $config->save();
-    dpm(cim_get_controller()->save('Set caching to ' . $i) ? 'saved' : 'nothing to save');
-  }
-  /* config('system.performance')-> */
-  /* dpm($ssc->latest()); */
+  $message = $c1->encrypt(array('testdata' => 'this is a test'));
+  dpm($c2->decrypt($message));
+
+  $message2 = $c2->encrypt('this is another test');
+  dpm($c1->decrypt($message2));
+
+  /* $crypt->test(); */
   return "";
 }
