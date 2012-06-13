@@ -454,12 +454,12 @@ function cim_request_authenticate($crypt, $request) {
 }
 
 function cim_request_pull($crypt, $request) {
-  if (!($snapshot = cim_get_controller()->create())) {
-    $snapshot = cim_get_controller()->latest();
-  }
+  // Work from latest snapshot.
+  $snapshot = cim_get_controller()->latest();
   $res = cim_get_controller()->latestDump($snapshot);
 
   $response = array(
+    'sha' => $snapshot->changeset->sha(),
     'changeset' => Changeset::fromDiff(array(), $res[1]),
   );
 
