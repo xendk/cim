@@ -12,11 +12,6 @@ namespace Drupal\cim;
  */
 class Changeset {
   /**
-   * Parent snapshot.
-   */
-  protected $parent = "";
-
-  /**
    * Array of Differences.
    */
   protected $changes;
@@ -27,11 +22,10 @@ class Changeset {
    * @return Changeset|NULL
    *   changeset or NULL if no changes detected.
    */
-  public static function fromDiff($a, $b, $parent = "") {
+  public static function fromDiff($a, $b) {
     $changes = Changeset::diff($a, $b);
     if ($changes) {
       $changeset = new Changeset();
-      $changeset->parent = $parent;
       $changeset->changes = $changes;
       return $changeset;
     }
@@ -80,13 +74,6 @@ class Changeset {
   }
 
   /**
-   * Returns the parent of this changeset.
-   */
-  public function parent() {
-    return $this->parent;
-  }
-
-  /**
    * Returns array of changes.
    */
   public function changes() {
@@ -119,9 +106,9 @@ class Changeset {
 
   /**
    * Return the sha for this changeset.
+   * @todo: deprecated?
    */
   public function sha() {
-    $string = $this->parent;
     foreach ($this->changes as $change) {
       $string .= serialize($change);
     }

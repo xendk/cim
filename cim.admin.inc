@@ -27,14 +27,13 @@ function cim_admin_list($sha = NULL) {
   }
 
   $rows = array();
-  $header = array(t('Num'), t('Created'), t('Id'), t('+/X/-'));
+  $header = array(t('Created'), t('Id'), t('+/X/-'));
   foreach ($snapshots as $snapshot) {
-    $diff_stat = $snapshot->changeset->diff3Stat();
+    $diff_stat = $snapshot->changeset()->diff3Stat();
     $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
     $rows[] = array(
-      $snapshot->cid,
-      format_date($snapshot->created, 'short'),
-      theme('cim_admin_snapshot_overview', array('sha' => $snapshot->changeset_sha, 'link' => 'admin/config/development/cim/snapshot/' . $snapshot->cid, 'message' => $snapshot->message)),
+      format_date($snapshot->created(), 'short'),
+      theme('cim_admin_snapshot_overview', array('sha' => $snapshot->changeset_sha(), 'link' => 'admin/config/development/cim/snapshot/' . $snapshot->changeset_sha(), 'message' => $snapshot->message())),
       $diff_stat,
     );
   }
@@ -75,7 +74,7 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
 
     $form['changeset'] = array(
       '#type' => 'cim_changeset_view',
-      '#changeset' => $snapshot->changeset,
+      '#changeset' => $snapshot->changeset(),
     );
 
     return confirm_form($form, 'Create a new snapshot?', 'admin/config/development/cim');
@@ -95,7 +94,9 @@ function cim_admin_create_snapshot_form($form, &$form_state) {
  * Creates a new snapshot.
  */
 function cim_admin_create_snapshot_form_submit($form, &$form_state) {
-  cim_get_controller()->save($form_state['values']['message']);
+  $ssc = cim_get_controller();
+  $snapshot = $ssc->create($form_state['values']['message']);
+  $ssc->save($snapshot);
   $form_state['redirect'] = 'admin/config/development/cim';
   drupal_set_message(t('Snapshot "@message" saved.', array('@message' => $form_state['values']['message'])));
 }
@@ -343,7 +344,8 @@ function cim_admin_authenticate_form($form, &$form_state) {
  */
 function cim_admin_authenticate_form_validate($form, &$form_state) {
   // @todo check that $form_state['values']['downstream_name'] haven't been used.
-  $directory = cim_peer_directory();
+  $directory = cim_directory();
+  // @todo: remove
   if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
     form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
   };
@@ -361,7 +363,7 @@ function cim_admin_authenticate_form_submit($form, &$form_state) {
     drupal_set_message(t('Token not active. Please retry authentication from the downstream.'), 'error');
     return;
   }
-  $peer_file = cim_peer_directory() . '/' . hash('sha256', $form_state['cim_peer_data']['public_key']);
+  $peer_file = cim_directory() . '/' . hash('sha256', $form_state['cim_peer_data']['public_key']);
 
   $data = array(
     'name' => $form_state['values']['downstream_name'],
@@ -402,7 +404,7 @@ function cim_admin_add_upstream_form($form, &$form_state) {
       }
       // Verified, save it.
       $peer_id = hash('sha256', $cache->data['public_key']);
-      $peer_file = cim_peer_directory() . '/' . $peer_id;
+      $peer_file = cim_directory() . '/' . $peer_id;
 
       $data = array(
         'name' => $cache->data['upstream_name'],
@@ -413,7 +415,7 @@ function cim_admin_add_upstream_form($form, &$form_state) {
       file_put_contents($peer_file, serialize($data));
       // Really, there's no reason we shouldn't be able to support multiple
       // upstreams, but let's keep it simple to start with.
-      file_put_contents(cim_peer_directory() . '/upstream', $peer_id);
+      file_put_contents(cim_directory() . '/upstream', $peer_id);
     }
     else {
       $form['message'] = array(
@@ -425,8 +427,8 @@ function cim_admin_add_upstream_form($form, &$form_state) {
 
   $name = '';
   $url = '';
-  if (file_exists(cim_peer_directory() . '/upstream')) {
-    $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+  if (file_exists(cim_directory() . '/upstream')) {
+    $peer_id = file_get_contents(cim_directory() . '/upstream');
     if ($peer = cim_peer($peer_id)) {
       $name = $peer['name'];
       $url = $peer['url'];
@@ -457,7 +459,8 @@ function cim_admin_add_upstream_form($form, &$form_state) {
 function cim_admin_add_upstream_form_validate($form, &$form_state) {
 
   // Make sure that there's a peer directory we can use.
-  $directory = cim_peer_directory();
+  // @todo: remove, deprecated.
+  $directory = cim_directory();
   if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
     form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
   };

@@ -338,10 +338,10 @@ function cim_xmlrpc_authenticate($request) {
 }
 
 function cim_peer_request($request) {
-  if (!file_exists(cim_peer_directory() . '/upstream')) {
+  if (!file_exists(cim_directory() . '/upstream')) {
     throw new Exception('No upstream.');
   }
-  $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+  $peer_id = file_get_contents(cim_directory() . '/upstream');
   if (!($peer = cim_peer($peer_id))) {
     throw new Exception('No upstream.');
   }
@@ -502,6 +502,8 @@ function cim_keys() {
     $keys = $crypto->getKeyPair();
     $php = "<?php\n\n\$keys = " . var_export($keys, TRUE) . ";\n";
     file_put_contents($path, $php);
+    // @todo: not the most proper place for this?
+    file_prepare_directory(cim_directory(), FILE_CREATE_DIRECTORY);
   }
   else {
     include $path;
@@ -511,7 +513,7 @@ function cim_keys() {
 
 function cim_peer($peer_id) {
   $crypt = new Crypt(cim_keys());
-  $peer_file = cim_peer_directory() . '/' . $peer_id;
+  $peer_file = cim_directory() . '/' . $peer_id;
   if (file_exists($peer_file)) {
     $peer = unserialize(file_get_contents($peer_file));
     $crypt->setPeerKey($crypt->getPublicKey());
@@ -526,17 +528,17 @@ function cim_peer($peer_id) {
 }
 
 function cim_upstream() {
-  if (!file_exists(cim_peer_directory() . '/upstream')) {
+  if (!file_exists(cim_directory() . '/upstream')) {
     throw new Exception('No upstream.');
   }
-  $peer_id = file_get_contents(cim_peer_directory() . '/upstream');
+  $peer_id = file_get_contents(cim_directory() . '/upstream');
   if (!($peer = cim_peer($peer_id))) {
     throw new Exception('No upstream.');
   }
   return $peer;
 }
 
-function cim_peer_directory() {
+function cim_directory() {
   $crypt = new Crypt(cim_keys());
   return config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey());
 }

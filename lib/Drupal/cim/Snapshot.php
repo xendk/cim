@@ -6,59 +6,97 @@
  */
 
 namespace Drupal\cim;
+use \Serializable;
 
-class Snapshot {
-  // @todo these properties should be protected, but we have code depending on
-  // them that needs other ways to get the required information then.
-  // One being drupal_write_record. There seems to be no recommended way of
-  // implementing objects with private properties.
-  public $cid;
-  public $changeset_sha;
-  public $changeset_parent;
-  public $changeset;
-  // @todo drupal_write_record likes to serialize NULL instead of storing NULL. Figure out why.
-  public $dump;
-  public $previous_dump;
-  public $created;
-  public $uid;
-  public $message;
+class Snapshot implements Serializable {
+  protected $ssc;
+  protected $parent_sha;
+  protected $changeset;
+  protected $changeset_sha;
+  protected $dump;
+  protected $dump_sha;
+  protected $created;
+  /* protected $uid; */
+  protected $message;
 
-  public function __construct($message = '') {
-    global $user;
-    // If these properties is already set, we were loaded from database.
-    if (!empty($this->changeset)) {
-      $this->changeset = unserialize($this->changeset);
-    }
-    if (!empty($this->dump)) {
-      $this->dump = unserialize($this->dump);
-    }
-    if (empty($this->created)) {
-      $this->created = REQUEST_TIME;
-    }
-    if (!isset($this->uid)) {
-      $this->uid = $user->uid;
-    }
-    if (!isset($this->message)) {
-      $this->message = $message;
-    }
-  }
-
-  public function setChangeset($changeset) {
+  public function __construct($message, $ssc, $parent_sha, Changeset $changeset, ConfigInterface $config) {
+    $this->ssc = $ssc;
+    $this->message = $message;
+    $this->parent_sha = $parent_sha;
     $this->changeset = $changeset;
-    $this->changeset_sha = $changeset->sha();
-    $this->changeset_parent = $changeset->parent();
-    if ($this->changeset_parent && empty($this->previous_dump)) {
-      $previous_snapshot = cim_get_controller()->load($this->changeset_parent);
-      if (!empty($previous_snapshot->dump)) {
-        $this->previous_dump = $previous_snapshot->cid;
-      }
-      else {
-        $this->previous_dump = $previous_snapshot->previous_dump;
-      }
-    }
+    $this->changeset_sha = hash('sha256', serialize($changeset));
+    $dump = $config->toArray();
+    $this->dump = $dump;
+    $this->dump_sha = hash('sha256', serialize($dump));
+    $this->created = REQUEST_TIME;
   }
 
-  public function setDump($dump) {
-    $this->dump = $dump;
+  public function controller($controller) {
+    // todo: really, this isn't dependency injection, but lets let the dust
+    // settle on that one first.
+    $this->ssc = $controller;
+  }
+
+  /**
+   *
+   */
+  function save(SnapshotController $ssc) {
+    // @todo: should let dump and changeset save themselves.
+    $ssc->writeBlob($this->changeset);
+    if ($this->dump) {
+      $ssc->writeBlob($this->dump);
+    }
+    $ssc->writeBlob($this);
+  }
+
+  function serialize() {
+    return serialize(array($this->message, $this->parent_sha, $this->created, $this->changeset_sha, $this->dump_sha));
+  }
+
+  function unserialize($blob) {
+    list($this->message, $this->parent_sha, $this->created, $this->changeset_sha, $this->dump_sha) = unserialize($blob);
+  }
+
+  function parent() {
+    if (!empty($this->parent_sha)) {
+      return $this->ssc->load($this->parent_sha);
+    }
+    return FALSE;
+  }
+
+  function message() {
+    return $this->message;
+  }
+
+  function created() {
+    return $this->created;
+  }
+
+  function changeset_sha() {
+    return $this->changeset_sha;
+  }
+
+  function changeset() {
+    if (empty($this->changeset)) {
+      $this->changeset = $this->ssc->readBlob($this->changeset_sha);
+    }
+    return $this->changeset;
+  }
+
+  function dump(SnapshotController $ssc) {
+    if ($this->dump = $ssc->readBlob($this->dump_sha)) {
+      return $this->dump;
+    }
+    else {
+      if (empty($this->parent_sha)) {
+        return;
+      }
+      // Get the parent snapshot dump and apply our changes.
+      $parent = $ssc->load($this->parent_sha);
+      if (empty($this->changeset)) {
+        $this->changeset = $ssc->readBlob($this->changeset_sha);
+      }
+      return $this->changeset->apply($parent->dump());
+    }
   }
 }

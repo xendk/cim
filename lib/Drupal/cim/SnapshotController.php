@@ -17,21 +17,74 @@ class SnapshotController {
   const FULL_DUMP_FREQUENCY = 3;
 
   /**
-   * Take a snapshot.
+   * Save a snapshot.
    */
-  public function save($message = '') {
-    $snapshot = $this->create($message);
-    if ($snapshot) {
-      drupal_write_record('cim', $snapshot);
-      return $snapshot;
+  public function save(Snapshot $snapshot) {
+    $snapshot->save($this);
+    $head_file = cim_directory() . '/head';
+    $sha = file_put_contents($head_file, $snapshot->ssc_sha);
+    return FALSE;
+
+  }
+
+  public function writeBlob($data) {
+    if (isset($data->ssc_sha)) {
+      unset($data->ssc_sha);
+    }
+    $blob = serialize($data);
+    $sha = hash('sha256', $blob);
+    $filename = cim_directory() . '/' . $sha;
+    if (is_object($data)) {
+      $data->ssc_sha = $sha;
+    }
+    return file_put_contents($filename, $blob);
+  }
+
+  public function sha($data) {
+    if (isset($data->ssc_sha)) {
+      unset($data->ssc_sha);
+    }
+    $blob = serialize($data);
+    $sha = hash('sha256', $blob);
+    if (is_object($data)) {
+      $data->ssc_sha = $sha;
+    }
+    return $sha;
+  }
+
+  public function readBlob($sha) {
+    $filename = cim_directory() . '/' . $sha;
+    if (!file_exists($filename)) {
+      return FALSE;
+    }
+    if ($blob = file_get_contents($filename)) {
+      return unserialize($blob);
     }
     return FALSE;
   }
 
   /**
-   * Create changeset from current configuration changes.
+   * Create snapshot from current configuration changes.
    */
   public function create($message = '') {
+    $config = new ConfigDrupalConfig();
+    $last_snapshot = $this->latest();
+    if ($last_snapshot) {
+      $parent_sha = $this->sha($last_snapshot);
+      $prevdump = $last_snapshot->dump($this);
+    }
+    else {
+      $parent_sha = NULL;
+      $prevdump = array();
+    }
+    $changeset = Changeset::fromDiff($prevdump, $config);
+    if ($changeset) {
+      $snapshot = new Snapshot($message, $this, $parent_sha, $changeset, $config);
+      return $snapshot;
+    }
+    return FALSE;
+
+    // Old code:
     $fulldump = FALSE;
     $config = new ConfigDrupalConfig();
     $latest_snapshot = $this->latest();
@@ -83,10 +136,9 @@ class SnapshotController {
    * Load a snapshot.
    */
   public function load($sha) {
-    return db_select('cim', 'c', array('fetch' => 'Drupal\cim\Snapshot'))
-      ->fields('c')
-      ->condition('changeset_sha', $sha)
-      ->execute()->fetch();
+    $snapshot = $this->readBlob($sha);
+    $snapshot->controller($this);
+    return $snapshot;
   }
 
   function revert(Snapshot $snapshot) {
@@ -128,25 +180,32 @@ class SnapshotController {
 
     $result[] = $row;
     while (sizeof($result) < $num) {
-      $row = $this->load($row->changeset_parent);
+      $row = $row->parent();
       if (!$row) {
         break;
       }
       $result[] = $row;
     }
+    /* while (sizeof($result) < $num) { */
+    /*   $row = $this->load($row->changeset_parent); */
+    /*   if (!$row) { */
+    /*     break; */
+    /*   } */
+    /*   $result[] = $row; */
+    /* } */
     return $result;
   }
 
   /**
-   * Get the latest changeset.
+   * Get the latest Snapshot.
    */
   public function latest() {
-    return db_select('cim', 'c', array('fetch' => 'Drupal\cim\Snapshot'))
-      ->fields('c')
-      ->orderBy('created', 'DESC')
-      ->orderBy('cid', 'DESC')
-      ->range(0, 1)
-      ->execute()->fetch();
+    $head_file = cim_directory() . '/head';
+    if (file_exists($head_file)) {
+      $sha = file_get_contents($head_file);
+      return $this->load($sha);
+    }
+    return FALSE;
   }
 
   /**
