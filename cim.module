@@ -503,7 +503,8 @@ function cim_keys() {
     $php = "<?php\n\n\$keys = " . var_export($keys, TRUE) . ";\n";
     file_put_contents($path, $php);
     // @todo: not the most proper place for this?
-    file_prepare_directory(cim_directory(), FILE_CREATE_DIRECTORY);
+    $directory = cim_directory();
+    file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
   }
   else {
     include $path;

@@ -17,3 +17,5 @@ function cim_install() {
   $snapshot = $ssc->create('Initial snapshot at install time.');
   $ssc->save($snapshot);
 }
+
+// todo: implement hook_uninstall.
