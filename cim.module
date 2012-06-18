@@ -120,9 +120,9 @@ function cim_menu() {
 /**
  * Menu loader function.
  */
-function cim_snapshot_load($cid) {
+function cim_snapshot_load($sha) {
   $ssc = new SnapshotController();
-  return $ssc->loadCid($cid);
+  return $ssc->load($sha);
 }
 
 /**
@@ -136,7 +136,7 @@ function cim_snapshot_access($snapshot) {
   if (!$latest) {
     $latest = cim_get_controller()->latest();
   }
-  if (user_access('administer snapshots') && !empty($snapshot->changeset_parent) && $snapshot->cid != $latest->cid) {
+  if (user_access('administer snapshots') && $snapshot->parent_sha() && $snapshot != $latest) {
     return TRUE;
   }
   return FALSE;

@@ -57,6 +57,10 @@ class Snapshot implements Serializable {
     list($this->message, $this->parent_sha, $this->created, $this->changeset_sha, $this->dump_sha) = unserialize($blob);
   }
 
+  function parent_sha() {
+    return $this->parent_sha;
+  }
+
   function parent() {
     if (!empty($this->parent_sha)) {
       return $this->ssc->load($this->parent_sha);
@@ -83,8 +87,8 @@ class Snapshot implements Serializable {
     return $this->changeset;
   }
 
-  function dump(SnapshotController $ssc) {
-    if ($this->dump = $ssc->readBlob($this->dump_sha)) {
+  function dump() {
+    if ($this->dump = $this->ssc->readBlob($this->dump_sha)) {
       return $this->dump;
     }
     else {
@@ -92,11 +96,15 @@ class Snapshot implements Serializable {
         return;
       }
       // Get the parent snapshot dump and apply our changes.
-      $parent = $ssc->load($this->parent_sha);
+      $parent = $this->ssc->load($this->parent_sha);
       if (empty($this->changeset)) {
-        $this->changeset = $ssc->readBlob($this->changeset_sha);
+        $this->changeset = $this->ssc->readBlob($this->changeset_sha);
       }
       return $this->changeset->apply($parent->dump());
     }
+  }
+
+  function sha() {
+    return $this->ssc->sha($this);
   }
 }

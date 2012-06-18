@@ -33,7 +33,7 @@ function cim_admin_list($sha = NULL) {
     $diff_stat = $diff_stat[0] . '/' . $diff_stat[1] . '/' . $diff_stat[2];
     $rows[] = array(
       format_date($snapshot->created(), 'short'),
-      theme('cim_admin_snapshot_overview', array('sha' => $snapshot->changeset_sha(), 'link' => 'admin/config/development/cim/snapshot/' . $snapshot->changeset_sha(), 'message' => $snapshot->message())),
+      theme('cim_admin_snapshot_overview', array('sha' => $snapshot->sha(), 'link' => 'admin/config/development/cim/snapshot/' . $snapshot->sha(), 'message' => $snapshot->message())),
       $diff_stat,
     );
   }
@@ -126,7 +126,7 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
       '#markup' => t('This will make the following changes.'),
     );
 
-    $form['changeset'] = array(
+    $form['changeset_view'] = array(
       '#type' => 'cim_changeset_view',
       '#changeset' => $changeset,
     );
@@ -150,7 +150,7 @@ function cim_admin_revert_snapshot_form($form, &$form_state, $snapshot) {
  */
 function cim_admin_revert_snapshot_form_submit($form, &$form_state) {
   $snapshot = $form_state['values']['snapshot'];
-  $message = 'Reverts "' . $snapshot->message . '" (' . $snapshot->changeset_sha . ')';
+  $message = 'Reverts "' . $snapshot->message() . '" (' . $snapshot->sha() . ')';
   cim_get_controller()->apply($form_state['values']['changeset'], $message);
   drupal_set_message(t('Snapshot reverted.'));
   $form_state['redirect'] = 'admin/config/development/cim';
@@ -165,6 +165,13 @@ function cim_admin_rollback_snapshot_form($form, &$form_state, $snapshot) {
 
   $config = new ConfigDrupalConfig();
   $changeset = cim_get_controller()->rollback($snapshot);
+  if (!$changeset) {
+    $form['message'] = array(
+      '#markup' => t('No changes needed to roll back this snapshot.'),
+    );
+
+    return $form;
+  }
   if ($changeset && $changeset->appliesTo($config)) {
     $form['changeset'] = array(
       '#type' => 'value',
@@ -205,7 +212,7 @@ function cim_admin_rollback_snapshot_form($form, &$form_state, $snapshot) {
  */
 function cim_admin_rollback_snapshot_form_submit($form, &$form_state) {
   $snapshot = $form_state['values']['snapshot'];
-  $message = 'Rollback to "' . $snapshot->message . '" (' . $snapshot->changeset_sha . ')';
+  $message = 'Rollback to "' . $snapshot->message() . '" (' . $snapshot->sha . ')';
   cim_get_controller()->apply($form_state['values']['changeset'], $message);
   drupal_set_message(t('Changes rolled back.'));
   $form_state['redirect'] = 'admin/config/development/cim';
@@ -228,37 +235,37 @@ function cim_admin_snapshot_view($snapshot) {
   $build['meta']['message'] = array(
     '#type' => 'item',
     '#title' => t('Message'),
-    '#markup' => check_plain($snapshot->message),
+    '#markup' => check_plain($snapshot->message()),
   );
 
   $build['meta']['changeset_sha'] = array(
     '#type' => 'item',
     '#title' => 'Changeset SHA',
-    '#markup' => check_plain($snapshot->changeset_sha),
+    '#markup' => check_plain($snapshot->changeset_sha()),
   );
 
-  $build['meta']['changeset_parent'] = array(
+  $build['meta']['snapshot_parent'] = array(
     '#type' => 'item',
-    '#title' => 'Parent changeset SHA',
-    '#markup' => $snapshot->changeset_parent ? check_plain($snapshot->changeset_parent) : t('(none, first snapshot)'),
+    '#title' => 'Parent snapshot SHA',
+    '#markup' => $snapshot->parent_sha() ? check_plain($snapshot->parent_sha()) : t('(none, first snapshot)'),
   );
 
   $build['meta']['created'] = array(
     '#type' => 'item',
     '#title' => 'Creation time',
-    '#markup' => format_date($snapshot->created),
+    '#markup' => format_date($snapshot->created()),
   );
 
-  if (!empty($snapshot->dump)) {
-    $build['meta']['dump'] = array(
-      '#type' => 'markup',
-      '#markup' => t('Includes full config dump.'),
-    );
-  }
+  /* if (!empty($snapshot->dump)) { */
+  /*   $build['meta']['dump'] = array( */
+  /*     '#type' => 'markup', */
+  /*     '#markup' => t('Includes full config dump.'), */
+  /*   ); */
+  /* } */
 
   $build['changeset'] = array(
     '#type' => 'cim_changeset_view',
-    '#changeset' => $snapshot->changeset,
+    '#changeset' => $snapshot->changeset(),
   );
 
   return $build;

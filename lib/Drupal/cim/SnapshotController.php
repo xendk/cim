@@ -42,11 +42,12 @@ class SnapshotController {
 
   public function sha($data) {
     if (isset($data->ssc_sha)) {
-      unset($data->ssc_sha);
+      return $data->ssc_sha;
     }
     $blob = serialize($data);
     $sha = hash('sha256', $blob);
     if (is_object($data)) {
+      // Cache sha on objects.
       $data->ssc_sha = $sha;
     }
     return $sha;
@@ -118,18 +119,12 @@ class SnapshotController {
     if ($changeset->appliesTo($config)) {
       $changeset->apply($config);
       $config->commit();
-      return $this->save($message);
+      $snapshot = $this->create($message);
+      return $this->save($snapshot);
     }
     else {
       throw new \Exception('Changeset doesn\'t apply');
     }
-  }
-
-  public function loadCid($cid) {
-    return db_select('cim', 'c', array('fetch' => 'Drupal\cim\Snapshot'))
-      ->fields('c')
-      ->condition('cid', $cid)
-      ->execute()->fetch();
   }
 
   /**
@@ -137,25 +132,23 @@ class SnapshotController {
    */
   public function load($sha) {
     $snapshot = $this->readBlob($sha);
+    if (!$snapshot) {
+      // Who's been messing?
+      print_r(debug_backtrace());
+      die(); // todo: get rid of this, obviously.
+    }
     $snapshot->controller($this);
     return $snapshot;
   }
 
   function revert(Snapshot $snapshot) {
-    $parent_snapshot = $this->load($snapshot->changeset_parent);
-    list($depth, $parent_dump) = $this->latestDump($parent_snapshot);
-    /* This could also be done with:
-     * $snapshot_dump = $snapshot->changeset->apply(clone $parent_dump);
-     */
-    list($depth, $snapshot_dump) = $this->latestDump($snapshot);
-    return Changeset::fromDiff($snapshot_dump, $parent_dump);
+    $parent_snapshot = $snapshot->parent();
+    return Changeset::fromDiff($snapshot->dump(), $parent_snapshot->dump());
   }
 
   function rollback(Snapshot $snapshot) {
     $latest_snapshot = $this->latest();
-    list($depth, $snapshot_dump) = $this->latestDump($snapshot);
-    list($depth, $latest_dump) = $this->latestDump($latest_snapshot);
-    return Changeset::fromDiff($latest_dump, $snapshot_dump);
+    return Changeset::fromDiff($latest_snapshot->dump(), $snapshot->dump());
   }
 
   /**
@@ -186,13 +179,6 @@ class SnapshotController {
       }
       $result[] = $row;
     }
-    /* while (sizeof($result) < $num) { */
-    /*   $row = $this->load($row->changeset_parent); */
-    /*   if (!$row) { */
-    /*     break; */
-    /*   } */
-    /*   $result[] = $row; */
-    /* } */
     return $result;
   }
 
