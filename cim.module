@@ -121,7 +121,7 @@ function cim_menu() {
  * Menu loader function.
  */
 function cim_snapshot_load($sha) {
-  $ssc = new SnapshotController();
+  $ssc = cim_get_controller();
   return $ssc->load($sha);
 }
 
@@ -148,7 +148,10 @@ function cim_snapshot_access($snapshot) {
 function cim_get_controller() {
   $controller = &drupal_static(__FUNCTION__, NULL);
   if (!isset($controller)) {
-    $controller = new SnapshotController();
+    $crypt = new Crypt(cim_keys());
+    // todo: this is odd, figure out how to do it.
+    $crypt->setPeerKey($crypt->getPublicKey());
+    $controller = new SnapshotController($crypt);
   }
   return $controller;
 }

@@ -11,10 +11,15 @@ namespace Drupal\cim;
  * Manages snapshots.
  */
 class SnapshotController {
+  protected $crypt;
   /**
    * The number of changesets between saving a full dump of configuration.
    */
   const FULL_DUMP_FREQUENCY = 3;
+
+  public function __construct($crypt) {
+    $this->crypt = $crypt;
+  }
 
   /**
    * Save a snapshot.
@@ -37,7 +42,7 @@ class SnapshotController {
     if (is_object($data)) {
       $data->ssc_sha = $sha;
     }
-    return file_put_contents($filename, $blob);
+    return file_put_contents($filename, serialize($this->crypt->seal($blob)));
   }
 
   public function sha($data) {
@@ -59,7 +64,9 @@ class SnapshotController {
       return FALSE;
     }
     if ($blob = file_get_contents($filename)) {
-      return unserialize($blob);
+      if (($blob = unserialize($blob)) && ($blob = $this->crypt->open($blob['data'], $blob['envelope']))) {
+        return unserialize($blob);
+      }
     }
     return FALSE;
   }
