@@ -355,7 +355,11 @@ function cim_peer_request($request) {
     'peer_id' => hash('sha256', $crypt->getPublicKey()),
   );
 
-  return cim_request($peer['url'], $message);
+  $result = cim_request($peer['url'], $message);
+  if (!isset($result['status'])) {
+    throw new Exception('Upstream failed giving a proper answer');
+  }
+  return $result;
 }
 
 function cim_request($site, $request) {
