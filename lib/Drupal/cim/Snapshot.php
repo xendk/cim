@@ -87,6 +87,10 @@ class Snapshot implements Serializable {
     return $this->changeset;
   }
 
+  function dump_sha() {
+    return $this->dump_sha;
+  }
+
   function dump() {
     if ($this->dump = $this->ssc->readBlob($this->dump_sha)) {
       return $this->dump;

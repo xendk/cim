@@ -536,20 +536,15 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
     'action' => 'pull',
   );
   $response = cim_peer_request($request);
-  $upstream = cim_upstream();
-  // @todo: Way too much magic handwaving in these 2 lines...
-  $crypt = new Crypt(cim_keys(), $upstream['public_key']);
-  $response = $crypt->decrypt(base64_decode($response['response']));
+  $latest = cim_get_controller()->latest();
 
-  if (!empty($response['changeset'])) {
-    // Create a ConfigArray corresponding to the upstream config.
-    $upstream_conf = new ConfigArray(array());
-    $response['changeset']->apply($upstream_conf);
+  if (!empty($response['snapshot']) && ($response['snapshot']->dump_sha() != $latest->dump_sha())) {
+    $blob = cim_peer_request(array('action' => 'blob', 'sha' => $response['snapshot']->dump_sha()));
 
     // Create a changeset we can use by taking the difference between our config
     // and upstreams.
     $config = new ConfigDrupalConfig();
-    $new_changeset = Changeset::fromDiff($config, $upstream_conf);
+    $new_changeset = Changeset::fromDiff($config, $blob['blob']);
   }
 
   if (!empty($new_changeset)) {
@@ -557,6 +552,7 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
       '#markup' => t('Pull the following configuration changes?'),
     );
 
+    $upstream = cim_upstream();
     $form['message'] = array(
       '#type' => 'textfield',
       '#title' => t('Message'),

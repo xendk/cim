@@ -341,24 +341,24 @@ function cim_xmlrpc_authenticate($request) {
 }
 
 function cim_peer_request($request) {
-  if (!file_exists(cim_directory() . '/upstream')) {
-    throw new Exception('No upstream.');
-  }
-  $peer_id = file_get_contents(cim_directory() . '/upstream');
-  if (!($peer = cim_peer($peer_id))) {
-    throw new Exception('No upstream.');
-  }
+  $upstream = cim_upstream();
 
-  $crypt = new Crypt(cim_keys(), $peer['public_key']);
+  // Crypt request.
+  $crypt = new Crypt(cim_keys(), $upstream['public_key']);
   $message = array(
     'request' => $crypt->encrypt($request),
     'peer_id' => hash('sha256', $crypt->getPublicKey()),
   );
 
-  $result = cim_request($peer['url'], $message);
+  $result = cim_request($upstream['url'], $message);
   if (!isset($result['status'])) {
     throw new Exception('Upstream failed giving a proper answer');
   }
+  if ($result['status'] != 'OK') {
+    return FALSE;
+  }
+  // Decrypt response.
+  $result = $crypt->decrypt(base64_decode($result['response']));
   return $result;
 }
 
@@ -420,7 +420,7 @@ function cim_xmlrpc_request($request) {
     }
   }
 
-  if (in_array($request['action'], array('authenticate', 'pull', 'push_changeset'))) {
+  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push_changeset'))) {
     $func = 'cim_request_' . $request['action'];
     return $func($crypt, $request);
   }
@@ -460,14 +460,29 @@ function cim_request_authenticate($crypt, $request) {
   return Response::error('Internal error');
 }
 
+function cim_request_blob($crypt, $request) {
+  if ($request['sha'] && $blob = cim_get_controller()->readBlob($request['sha'])) {
+    $response = array(
+      'blob' => $blob,
+    );
+
+    $response = $crypt->encrypt($response);
+    if ($response) {
+      return Response::success($response);
+    }
+    return Response::error('Internal error');
+
+  }
+  return Response::error('Unknown sha');
+}
+
 function cim_request_pull($crypt, $request) {
   // Work from latest snapshot.
   $snapshot = cim_get_controller()->latest();
-  $res = cim_get_controller()->latestDump($snapshot);
 
   $response = array(
-    'sha' => $snapshot->changeset->sha(),
-    'changeset' => Changeset::fromDiff(array(), $res[1]),
+    'sha' => $snapshot->sha(),
+    'snapshot' => $snapshot,
   );
 
   $response = $crypt->encrypt($response);
