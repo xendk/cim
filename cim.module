@@ -420,7 +420,7 @@ function cim_xmlrpc_request($request) {
     }
   }
 
-  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push_changeset'))) {
+  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push_snapshot'))) {
     $func = 'cim_request_' . $request['action'];
     return $func($crypt, $request);
   }
@@ -492,24 +492,30 @@ function cim_request_pull($crypt, $request) {
   return Response::error('Internal error');
 }
 
-function cim_request_push_changeset($request) {
+function cim_request_push_snapshot($request) {
   // @todo switch user.
+  $snapshot = !empty($request['snapshot']) ? $request['snapshot'] : NULL;
 
-  $changeset = !empty($request['changeset']) ? $request['changeset'] : NULL;
-  $message = !empty($request['message']) ? $request['message'] : '';
-
-  if (!($changeset instanceof Changeset)) {
+  if (!($snapshot instanceof Snapshot)) {
     watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
   }
 
-  $config = new ConfigDrupalConfig();
+  $latest = cim_get_controller()->latest();
 
-  if (!$changeset->appliesTo($config)) {
+  if ($latest->dump_sha() != $snapshot->dump_sha()) {
     // Doesn't apply. Return error.
-    return Response::success(array(''));
+    return Response::success(array(
+        'accepted' => FALSE,
+        'latest_sha' => $latest->sha(),
+      ));
   }
-
-  cim_get_controller()->apply($changeset, $message);
+  else {
+    $new_snapshot = cim_get_controller()->apply($snapshot->changeset(), $snapshot->message());
+    return Response::success(array(
+        'accepted' => TRUE,
+        'new_sha' => $new_snapshot->sha(),
+      ));
+  }
 }
 
 // @todo proper key storage.
