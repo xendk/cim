@@ -560,6 +560,11 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
       '#maxlength' => 255,
     );
 
+    $form['upstream_sha'] = array(
+      '#type' => 'value',
+      '#value' => $response['snapshot']->sha(),
+    );
+
     $form['changeset'] = array(
       '#type' => 'cim_changeset_view',
       '#changeset' => $new_changeset,
@@ -582,7 +587,16 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
 }
 
 function cim_admin_pull_confirm_form_submit($form, &$form_state) {
-  cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
+  $snapshot = cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
+  $file = cim_directory() . '/upstream_latest';
+  $crypt = new Crypt(cim_keys());
+  $data = array(
+    'upstream' => $form_state['values']['upstream_sha'],
+    'local' => $snapshot->sha(),
+  );
+  ksort($data);
+  $data['signature'] = $crypt->sign($data);
+  file_put_contents($file, serialize($data));
   drupal_set_message('Configuration pulled from upstream.');
 }
 

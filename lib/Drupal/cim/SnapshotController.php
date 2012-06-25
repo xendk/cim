@@ -25,11 +25,12 @@ class SnapshotController {
    * Save a snapshot.
    */
   public function save(Snapshot $snapshot) {
+    // @todo: We should *really* have some way of making sure this was
+    // successful.
     $snapshot->save($this);
     $head_file = cim_directory() . '/head';
     $sha = file_put_contents($head_file, $snapshot->ssc_sha);
-    return FALSE;
-
+    return $snapshot;
   }
 
   public function writeBlob($data) {
@@ -91,31 +92,6 @@ class SnapshotController {
       return $snapshot;
     }
     return FALSE;
-
-    // Old code:
-    $fulldump = FALSE;
-    $config = new ConfigDrupalConfig();
-    $latest_snapshot = $this->latest();
-    if ($latest_snapshot) {
-      list($depth, $previous_dump) = $this->latestDump($latest_snapshot);
-      $changeset = Changeset::fromDiff($previous_dump, $config, $latest_snapshot->changeset_sha);
-      if ($depth >= self::FULL_DUMP_FREQUENCY) {
-        $fulldump = TRUE;
-      }
-    }
-    else {
-      $fulldump = TRUE;
-      $changeset = Changeset::fromDiff(array(), $config);
-    }
-    if ($changeset) {
-      $snapshot = new Snapshot($message);
-      if ($fulldump) {
-        $snapshot->setDump($config->toArray());
-      }
-      $snapshot->setChangeset($changeset);
-      return $snapshot;
-    }
-    return FALSE;
   }
 
   /**
@@ -144,7 +120,6 @@ class SnapshotController {
       print_r(debug_backtrace());
       die(); // todo: get rid of this, obviously.
     }
-    $snapshot->controller($this);
     return $snapshot;
   }
 

@@ -21,6 +21,9 @@ class Snapshot implements Serializable {
 
   public function __construct($message, $ssc, $parent_sha, Changeset $changeset, ConfigInterface $config) {
     $this->ssc = $ssc;
+    // todo: really, this isn't dependency injection, but lets let the dust
+    // settle on that one first.
+    $this->ssc = cim_get_controller();
     $this->message = $message;
     $this->parent_sha = $parent_sha;
     $this->changeset = $changeset;
@@ -29,12 +32,6 @@ class Snapshot implements Serializable {
     $this->dump = $dump;
     $this->dump_sha = hash('sha256', serialize($dump));
     $this->created = REQUEST_TIME;
-  }
-
-  public function controller($controller) {
-    // todo: really, this isn't dependency injection, but lets let the dust
-    // settle on that one first.
-    $this->ssc = $controller;
   }
 
   /**
@@ -55,6 +52,7 @@ class Snapshot implements Serializable {
 
   function unserialize($blob) {
     list($this->message, $this->parent_sha, $this->created, $this->changeset_sha, $this->dump_sha) = unserialize($blob);
+    $this->ssc = cim_get_controller();
   }
 
   function parent_sha() {
