@@ -10,6 +10,7 @@ use Drupal\cim\Changeset;
 use Drupal\cim\ConfigArray;
 use Drupal\cim\ConfigDrupalConfig;
 use Drupal\cim\Crypt;
+use Drupal\cim\Peer;
 
 /**
  * Menu callback; Snapshot list page.
@@ -370,16 +371,8 @@ function cim_admin_authenticate_form_submit($form, &$form_state) {
     drupal_set_message(t('Token not active. Please retry authentication from the downstream.'), 'error');
     return;
   }
-  $peer_file = cim_directory() . '/' . hash('sha256', $form_state['cim_peer_data']['public_key']);
 
-  $data = array(
-    'name' => $form_state['values']['downstream_name'],
-    'uid' => $user->uid,
-    'public_key' => $form_state['cim_peer_data']['public_key'],
-  );
-  ksort($data);
-  $data['signature'] = $crypt->sign($data);
-  file_put_contents($peer_file, serialize($data));
+  new Peer($form_state['values']['downstream_name'], $form_state['cim_peer_data']['public_key'], $user->uid);
 
   $form_state['redirect'] = array(
     $form_state['cim_peer_data']['return_url'],
@@ -410,19 +403,11 @@ function cim_admin_add_upstream_form($form, &$form_state) {
         return $form;
       }
       // Verified, save it.
-      $peer_id = hash('sha256', $cache->data['public_key']);
-      $peer_file = cim_directory() . '/' . $peer_id;
-
-      $data = array(
-        'name' => $cache->data['upstream_name'],
-        'public_key' => $cache->data['public_key'],
-        'url' => $cache->data['upstream_url'],
-      );
-      $data['signature'] = $crypt->sign($data);
-      file_put_contents($peer_file, serialize($data));
+      $peer = new Peer($cache->data['upstream_name'], $cache->data['public_key'], NULL, $cache->data['upstream_url']);
+      $peer->save();
       // Really, there's no reason we shouldn't be able to support multiple
       // upstreams, but let's keep it simple to start with.
-      file_put_contents(cim_directory() . '/upstream', $peer_id);
+      file_put_contents(cim_directory() . '/upstream', $peer->id());
     }
     else {
       $form['message'] = array(
@@ -436,9 +421,9 @@ function cim_admin_add_upstream_form($form, &$form_state) {
   $url = '';
   if (file_exists(cim_directory() . '/upstream')) {
     $peer_id = file_get_contents(cim_directory() . '/upstream');
-    if ($peer = cim_peer($peer_id)) {
-      $name = $peer['name'];
-      $url = $peer['url'];
+    if ($peer = Peer::load($peer_id)) {
+      $name = $peer->name();
+      $url = $peer->url();
     }
   }
 
@@ -556,7 +541,7 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
     $form['message'] = array(
       '#type' => 'textfield',
       '#title' => t('Message'),
-      '#default_value' => 'Pulled from ' . $upstream['name'] . '.',
+      '#default_value' => 'Pulled from ' . $upstream->name() . '.',
       '#maxlength' => 255,
     );
 

@@ -10,6 +10,7 @@ use Drupal\cim\Difference;
 use Drupal\cim\Changeset;
 use Drupal\cim\Crypt;
 use Drupal\cim\Response;
+use Drupal\cim\Peer;
 
 /**
  * Implements hook_menu().
@@ -344,13 +345,13 @@ function cim_peer_request($request) {
   $upstream = cim_upstream();
 
   // Crypt request.
-  $crypt = new Crypt(cim_keys(), $upstream['public_key']);
+  $crypt = new Crypt(cim_keys(), $upstream->publicKey());
   $message = array(
     'request' => $crypt->encrypt($request),
     'peer_id' => hash('sha256', $crypt->getPublicKey()),
   );
 
-  $result = cim_request($upstream['url'], $message);
+  $result = cim_request($upstream->url(), $message);
   if (!isset($result['status'])) {
     throw new Exception('Upstream failed giving a proper answer');
   }
@@ -384,7 +385,7 @@ function cim_xmlrpc_request($request) {
       'peer_id' => '',
     );
 
-    $peer = cim_peer($request['peer_id']);
+    $peer = Peer::load($request['peer_id']);
     if (!$peer) {
       return Response::error('Unknown peer.');
     }
@@ -540,28 +541,12 @@ function cim_keys() {
   return $keys;
 }
 
-function cim_peer($peer_id) {
-  $crypt = new Crypt(cim_keys());
-  $peer_file = cim_directory() . '/' . $peer_id;
-  if (file_exists($peer_file)) {
-    $peer = unserialize(file_get_contents($peer_file));
-    $crypt->setPeerKey($crypt->getPublicKey());
-    $signature = $peer['signature'];
-    unset($peer['signature']);
-    ksort($peer);
-    if ($crypt->verify($peer, $signature)) {
-      return $peer;
-    }
-  }
-  return FALSE;
-}
-
 function cim_upstream() {
   if (!file_exists(cim_directory() . '/upstream')) {
     throw new Exception('No upstream.');
   }
   $peer_id = file_get_contents(cim_directory() . '/upstream');
-  if (!($peer = cim_peer($peer_id))) {
+  if (!($peer = Peer::load($peer_id))) {
     throw new Exception('No upstream.');
   }
   return $peer;
