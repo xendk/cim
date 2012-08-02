@@ -37,7 +37,7 @@ class Snapshot implements Serializable {
   /**
    *
    */
-  function save(SnapshotController $ssc) {
+  function save() {
     // @todo: should let dump and changeset save themselves.
     $storage = cim_get_storage();
     $storage->writeSecure($this->changeset);

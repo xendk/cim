@@ -55,7 +55,7 @@ class DefaultStorage implements StorageInterface {
     if (!$filename) {
       $filename = hash('sha256', $data);
     }
-    file_put_contents($filename, $data);
+    file_put_contents($this->dir . '/' . $filename, $data);
   }
 
   public function readSecure($filename) {
@@ -66,7 +66,7 @@ class DefaultStorage implements StorageInterface {
     return FALSE;
   }
 
-  public function writeSecure($data, $filename) {
+  public function writeSecure($data, $filename = NULL) {
     $data = serialize($data);
     if (!$filename) {
       $filename = hash('sha256', $data);

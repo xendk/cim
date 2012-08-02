@@ -28,7 +28,7 @@ class SnapshotController {
     // @todo: We should *really* have some way of making sure this was
     // successful.
     $storage = cim_get_storage();
-    $storage->write($snapshot);
+    $snapshot->save();
     $storage->write($snapshot->sha(), 'head');
     return $snapshot;
   }
@@ -40,7 +40,7 @@ class SnapshotController {
     $config = new ConfigDrupalConfig();
     $last_snapshot = $this->latest();
     if ($last_snapshot) {
-      $parent_sha = $this->sha($last_snapshot);
+      $parent_sha = $last_snapshot->sha();
       $prevdump = $last_snapshot->dump($this);
     }
     else {
