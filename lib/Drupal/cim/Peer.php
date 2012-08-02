@@ -22,14 +22,8 @@ class Peer {
   public static function load($id) {
     $crypt = new Crypt(cim_keys());
     $peer_file = cim_directory() . '/' . $id;
-    if (file_exists($peer_file)) {
-      $peer = unserialize(file_get_contents($peer_file));
-      $crypt->setPeerKey($crypt->getPublicKey());
-      $signature = $peer->signature;
-      unset($peer->signature);
-      if ($crypt->verify(serialize($peer), $signature)) {
-        return $peer;
-      }
+    if ($peer = cim_get_storage()->readSigned($id)) {
+      return $peer;
     }
     return FALSE;
   }
@@ -37,9 +31,7 @@ class Peer {
   public function save() {
     $crypt = new Crypt(cim_keys());
     $peer_file = cim_directory() . '/' . hash('sha256', $this->publicKey);
-    $this->signature = $crypt->sign(serialize($this));
-    file_put_contents($peer_file, serialize($this));
-
+    cim_get_storage()->writeSigned($this, hash('sha256', $this->publicKey));
   }
 
   public function __construct($name, $public_key, $uid = NULL, $url = NULL) {

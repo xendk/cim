@@ -105,17 +105,6 @@ class Changeset {
   }
 
   /**
-   * Return the sha for this changeset.
-   * @todo: deprecated?
-   */
-  public function sha() {
-    foreach ($this->changes as $change) {
-      $string .= serialize($change);
-    }
-    return hash('sha256', $string);
-  }
-
-  /**
    * Count the additions/changes/removals of changeset.
    */
   public function diff3Stat() {

@@ -11,6 +11,7 @@ use Drupal\cim\Changeset;
 use Drupal\cim\Crypt;
 use Drupal\cim\Response;
 use Drupal\cim\Peer;
+use Drupal\cim\DefaultStorage;
 
 /**
  * Implements hook_menu().
@@ -153,6 +154,21 @@ function cim_get_controller() {
     // todo: this is odd, figure out how to do it.
     $crypt->setPeerKey($crypt->getPublicKey());
     $controller = new SnapshotController($crypt);
+  }
+  return $controller;
+}
+
+/**
+ * Get the storage controller.
+ */
+function cim_get_storage() {
+  $controller = &drupal_static(__FUNCTION__, NULL);
+  if (!isset($controller)) {
+    $crypt = new Crypt(cim_keys());
+    // todo: this is odd, figure out how to do it.
+    $crypt->setPeerKey($crypt->getPublicKey());
+    // Really, should be pluggable.
+    $controller = new DefaultStorage($crypt, config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey()));
   }
   return $controller;
 }
@@ -462,7 +478,7 @@ function cim_request_authenticate($crypt, $request) {
 }
 
 function cim_request_blob($crypt, $request) {
-  if ($request['sha'] && $blob = cim_get_controller()->readBlob($request['sha'])) {
+  if ($request['sha'] && $blob = cim_get_storage()->read($request['sha'])) {
     $response = array(
       'blob' => $blob,
     );
@@ -542,10 +558,7 @@ function cim_keys() {
 }
 
 function cim_upstream() {
-  if (!file_exists(cim_directory() . '/upstream')) {
-    throw new Exception('No upstream.');
-  }
-  $peer_id = file_get_contents(cim_directory() . '/upstream');
+  $peer_id = cim_get_storage()->read('upstream');
   if (!($peer = Peer::load($peer_id))) {
     throw new Exception('No upstream.');
   }

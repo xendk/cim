@@ -79,7 +79,7 @@ class Crypt {
     if (!($crypted_data = unserialize($data))) {
       return FALSE;
     }
-    if (!($signed_data = $this->open($crypted_data['data'], $crypted_data['envelope'])) || !($signed_data = unserialize($signed_data))) {
+    if (!($signed_data = $this->open($crypted_data)) || !($signed_data = unserialize($signed_data))) {
       return FALSE;
     }
     if (!$this->verify($signed_data['data'], $signed_data['signature'])) {
@@ -124,8 +124,8 @@ class Crypt {
   /**
    * Decrypt a message.
    */
-  public function open($data, $envelope) {
-    if (!openssl_open($data, $uncrypted_data, $envelope, $this->private_key)) {
+  public function open($data) {
+    if (!openssl_open($data['data'], $uncrypted_data, $data['envelope'], $this->private_key)) {
       return FALSE;
     }
 

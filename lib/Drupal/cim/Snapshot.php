@@ -39,11 +39,12 @@ class Snapshot implements Serializable {
    */
   function save(SnapshotController $ssc) {
     // @todo: should let dump and changeset save themselves.
-    $ssc->writeBlob($this->changeset);
+    $storage = cim_get_storage();
+    $storage->writeSecure($this->changeset);
     if ($this->dump) {
-      $ssc->writeBlob($this->dump);
+      $storage->writeSecure($this->dump);
     }
-    $ssc->writeBlob($this);
+    $storage->writeSecure($this);
   }
 
   function serialize() {
@@ -80,7 +81,7 @@ class Snapshot implements Serializable {
 
   function changeset() {
     if (empty($this->changeset)) {
-      $this->changeset = $this->ssc->readBlob($this->changeset_sha);
+      $this->changeset = cim_get_storage()->readSecure($this->changeset_sha);
     }
     return $this->changeset;
   }
@@ -90,7 +91,7 @@ class Snapshot implements Serializable {
   }
 
   function dump() {
-    if ($this->dump = $this->ssc->readBlob($this->dump_sha)) {
+    if ($this->dump = cim_get_storage()->readSecure($this->dump_sha)) {
       return $this->dump;
     }
     else {
@@ -98,15 +99,15 @@ class Snapshot implements Serializable {
         return;
       }
       // Get the parent snapshot dump and apply our changes.
-      $parent = $this->ssc->load($this->parent_sha);
+      $parent = cim_get_storage()->readSecure($this->parent_sha);
       if (empty($this->changeset)) {
-        $this->changeset = $this->ssc->readBlob($this->changeset_sha);
+        $this->changeset = cim_get_storage()->readSecure($this->changeset_sha);
       }
       return $this->changeset->apply($parent->dump());
     }
   }
 
   function sha() {
-    return $this->ssc->sha($this);
+    return hash('sha256', serialize($this));
   }
 }

@@ -407,7 +407,7 @@ function cim_admin_add_upstream_form($form, &$form_state) {
       $peer->save();
       // Really, there's no reason we shouldn't be able to support multiple
       // upstreams, but let's keep it simple to start with.
-      file_put_contents(cim_directory() . '/upstream', $peer->id());
+      cim_get_storage()->write($peer->id(), 'upstream');
     }
     else {
       $form['message'] = array(
@@ -419,12 +419,10 @@ function cim_admin_add_upstream_form($form, &$form_state) {
 
   $name = '';
   $url = '';
-  if (file_exists(cim_directory() . '/upstream')) {
-    $peer_id = file_get_contents(cim_directory() . '/upstream');
-    if ($peer = Peer::load($peer_id)) {
+  if (($peer_id = cim_get_storage()->read('upstream')) &&
+    ($peer = Peer::load($peer_id))) {
       $name = $peer->name();
       $url = $peer->url();
-    }
   }
 
   $form['upstream_name'] = array(
@@ -573,15 +571,8 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
 
 function cim_admin_pull_confirm_form_submit($form, &$form_state) {
   $snapshot = cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
-  $file = cim_directory() . '/upstream_latest';
-  $crypt = new Crypt(cim_keys());
-  $data = array(
-    'upstream' => $form_state['values']['upstream_sha'],
-    'local' => $snapshot->sha(),
-  );
-  ksort($data);
-  $data['signature'] = $crypt->sign($data);
-  file_put_contents($file, serialize($data));
+
+  cim_get_storage()->writeSigned($data, 'upstream_latest');
   drupal_set_message('Configuration pulled from upstream.');
 }
 

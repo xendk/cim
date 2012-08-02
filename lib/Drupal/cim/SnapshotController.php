@@ -27,49 +27,10 @@ class SnapshotController {
   public function save(Snapshot $snapshot) {
     // @todo: We should *really* have some way of making sure this was
     // successful.
-    $snapshot->save($this);
-    $head_file = cim_directory() . '/head';
-    $sha = file_put_contents($head_file, $snapshot->ssc_sha);
+    $storage = cim_get_storage();
+    $storage->write($snapshot);
+    $storage->write($snapshot->sha(), 'head');
     return $snapshot;
-  }
-
-  public function writeBlob($data) {
-    if (isset($data->ssc_sha)) {
-      unset($data->ssc_sha);
-    }
-    $blob = serialize($data);
-    $sha = hash('sha256', $blob);
-    $filename = cim_directory() . '/' . $sha;
-    if (is_object($data)) {
-      $data->ssc_sha = $sha;
-    }
-    return file_put_contents($filename, serialize($this->crypt->seal($blob)));
-  }
-
-  public function sha($data) {
-    if (isset($data->ssc_sha)) {
-      return $data->ssc_sha;
-    }
-    $blob = serialize($data);
-    $sha = hash('sha256', $blob);
-    if (is_object($data)) {
-      // Cache sha on objects.
-      $data->ssc_sha = $sha;
-    }
-    return $sha;
-  }
-
-  public function readBlob($sha) {
-    $filename = cim_directory() . '/' . $sha;
-    if (!file_exists($filename)) {
-      return FALSE;
-    }
-    if ($blob = file_get_contents($filename)) {
-      if (($blob = unserialize($blob)) && ($blob = $this->crypt->open($blob['data'], $blob['envelope']))) {
-        return unserialize($blob);
-      }
-    }
-    return FALSE;
   }
 
   /**
@@ -114,7 +75,7 @@ class SnapshotController {
    * Load a snapshot.
    */
   public function load($sha) {
-    $snapshot = $this->readBlob($sha);
+    $snapshot = cim_get_storage()->readSecure($sha);
     if (!$snapshot) {
       // Who's been messing?
       print_r(debug_backtrace());
@@ -144,22 +105,22 @@ class SnapshotController {
   public function listing($num = 10, $start = NULL) {
     $result = array();
     if ($start) {
-      $row = $this->load($start);
+      $snapshot = $this->load($start);
     }
     else {
-      $row = $this->latest();
+      $snapshot = $this->latest();
     }
-    if (!$row) {
+    if (!$snapshot) {
       return $result;
     }
 
-    $result[] = $row;
+    $result[] = $snapshot;
     while (sizeof($result) < $num) {
-      $row = $row->parent();
-      if (!$row) {
+      $snapshot = $snapshot->parent();
+      if (!$snapshot) {
         break;
       }
-      $result[] = $row;
+      $result[] = $snapshot;
     }
     return $result;
   }
@@ -168,9 +129,8 @@ class SnapshotController {
    * Get the latest Snapshot.
    */
   public function latest() {
-    $head_file = cim_directory() . '/head';
-    if (file_exists($head_file)) {
-      $sha = file_get_contents($head_file);
+    $sha = cim_get_storage()->read('head');
+    if (!empty($sha)) {
       return $this->load($sha);
     }
     return FALSE;
