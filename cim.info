@@ -3,3 +3,4 @@ description = Manage configuration and exchange it between environments.
 package = Configuration
 version = 0.2-dev
 core = 8.x
+dependencies[] = xmlrpc

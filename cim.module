@@ -380,7 +380,7 @@ function cim_peer_request($request) {
 }
 
 function cim_request($site, $request) {
-  $url = $site . 'core/xmlrpc.php';
+  $url = $site . 'xmlrpc.php';
   $request = base64_encode(serialize($request));
   $response = xmlrpc($url, array('cim.request' => array($request)));
   return $response;
