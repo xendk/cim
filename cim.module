@@ -478,7 +478,7 @@ function cim_request_authenticate($crypt, $request) {
 }
 
 function cim_request_blob($crypt, $request) {
-  if ($request['sha'] && $blob = cim_get_storage()->read($request['sha'])) {
+  if ($request['sha'] && $blob = cim_get_storage()->readSecure($request['sha'])) {
     $response = array(
       'blob' => $blob,
     );

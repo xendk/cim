@@ -55,7 +55,9 @@ class ConfigDrupalConfig implements ConfigInterface {
    */
   function set($path, $value) {
     $name = array_shift($path);
-
+    if (!isset($this->configs[$name])) {
+      throw new Exception(t('Unknow config group %name', array('%name' => $name)));
+    }
     return $this->configs[$name]->set(join('.', $path), $value);
   }
 
