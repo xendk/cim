@@ -572,6 +572,11 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
 function cim_admin_pull_confirm_form_submit($form, &$form_state) {
   $snapshot = cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
 
+  $data = array(
+    'upstream' => $form_state['values']['upstream_sha'],
+    'local' => $snapshot->sha(),
+  );
+
   cim_get_storage()->writeSigned($data, 'upstream_latest');
   drupal_set_message('Configuration pulled from upstream.');
 }
