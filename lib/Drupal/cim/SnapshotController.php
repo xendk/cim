@@ -77,6 +77,7 @@ class SnapshotController {
   public function load($sha) {
     $snapshot = cim_get_storage()->readSecure($sha);
     if (!$snapshot) {
+      return NULL;
       // Who's been messing?
       print_r(debug_backtrace());
       die(); // todo: get rid of this, obviously.

@@ -116,6 +116,15 @@ function cim_menu() {
     'access arguments' => array('administer snapshots'),
   );
 
+  $items[$root . '/upstream/push'] = array(
+    'title' => 'Push configuration',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_push_confirm_form'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access arguments' => array('administer snapshots'),
+  );
+
   return $items;
 }
 
@@ -437,9 +446,9 @@ function cim_xmlrpc_request($request) {
     }
   }
 
-  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push_snapshot'))) {
+  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push'))) {
     $func = 'cim_request_' . $request['action'];
-    return $func($crypt, $request);
+    return $func($crypt, $request, $peer);
   }
   else {
     return Response::error('Unsupported action.');
@@ -509,30 +518,37 @@ function cim_request_pull($crypt, $request) {
   return Response::error('Internal error');
 }
 
-function cim_request_push_snapshot($request) {
+function cim_request_push($crypt, $request, $peer) {
   // @todo switch user.
-  $snapshot = !empty($request['snapshot']) ? $request['snapshot'] : NULL;
-
-  if (!($snapshot instanceof Snapshot)) {
-    watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
-  }
-
+  $changeset = !empty($request['changeset']) ? $request['changeset'] : NULL;
   $latest = cim_get_controller()->latest();
 
-  if ($latest->dump_sha() != $snapshot->dump_sha()) {
-    // Doesn't apply. Return error.
-    return Response::success(array(
+  if (!($changeset instanceof Changeset)) {
+    watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
+    return Response::success($crypt->encrypt(array(
         'accepted' => FALSE,
         'latest_sha' => $latest->sha(),
-      ));
+      )));
   }
-  else {
-    $new_snapshot = cim_get_controller()->apply($snapshot->changeset(), $snapshot->message());
-    return Response::success(array(
-        'accepted' => TRUE,
-        'new_sha' => $new_snapshot->sha(),
-      ));
+
+  if ($latest->sha() != $request['base_sha']) {
+    // Not based on latest snapshot. Return error.
+    return Response::success($crypt->encrypt(array(
+        'accepted' => FALSE,
+        'latest_sha' => $latest->sha(),
+      )));
   }
+
+  $message = !empty($request['message']) &&
+    ($request['message'] != 'No message.') ?
+    'Changeset pushed from ' . $peer['name'] . ' with message "' .
+    $request['message'] . '"' : 'Changeset pushed from ' . $peer['name'] . ' without a message.';
+
+  $new_snapshot = cim_get_controller()->apply($changeset, $message);
+  return Response::success($crypt->encrypt(array(
+      'accepted' => TRUE,
+      'new_sha' => $new_snapshot->sha(),
+    )));
 }
 
 // @todo proper key storage.
