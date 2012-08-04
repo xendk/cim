@@ -5,6 +5,11 @@
  * Upstream administrative pages.
  */
 
+use Drupal\cim\Changeset;
+use Drupal\cim\ConfigDrupalConfig;
+use Drupal\cim\Crypt;
+use Drupal\cim\Peer;
+
 function cim_admin_add_upstream_form($form, &$form_state) {
   // @todo this could do with a cleanup.
   if (!empty($_GET['token']) || !empty($_GET['sig'])) {
