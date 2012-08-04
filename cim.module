@@ -169,8 +169,11 @@ function cim_get_storage() {
     $crypt = new Crypt(cim_keys());
     // todo: this is odd, figure out how to do it.
     $crypt->setPeerKey($crypt->getPublicKey());
+    $dir = config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey());
+    file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
     // Really, should be pluggable.
-    $controller = new DefaultStorage($crypt, config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey()));
+    $controller = new DefaultStorage($crypt, $dir);
+
   }
   return $controller;
 }
@@ -506,9 +509,6 @@ function cim_keys() {
     $keys = $crypto->getKeyPair();
     $php = "<?php\n\n\$keys = " . var_export($keys, TRUE) . ";\n";
     file_put_contents($path, $php);
-    // @todo: not the most proper place for this?
-    $directory = cim_directory();
-    file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
   }
   else {
     include $path;
@@ -522,9 +522,4 @@ function cim_upstream() {
     throw new Exception('No upstream.');
   }
   return $peer;
-}
-
-function cim_directory() {
-  $crypt = new Crypt(cim_keys());
-  return config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey());
 }

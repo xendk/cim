@@ -67,14 +67,6 @@ function cim_admin_add_upstream_form($form, &$form_state) {
 }
 
 function cim_admin_add_upstream_form_validate($form, &$form_state) {
-
-  // Make sure that there's a peer directory we can use.
-  // @todo: remove, deprecated.
-  $directory = cim_directory();
-  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
-    form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
-  };
-
   $crypt = new Crypt(cim_keys());
 
   $request = array(

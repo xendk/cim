@@ -20,8 +20,6 @@ class Peer {
    * Load a peer.
    */
   public static function load($id) {
-    $crypt = new Crypt(cim_keys());
-    $peer_file = cim_directory() . '/' . $id;
     if ($peer = cim_get_storage()->readSigned($id)) {
       return $peer;
     }
@@ -29,8 +27,6 @@ class Peer {
   }
 
   public function save() {
-    $crypt = new Crypt(cim_keys());
-    $peer_file = cim_directory() . '/' . hash('sha256', $this->publicKey);
     cim_get_storage()->writeSigned($this, hash('sha256', $this->publicKey));
   }
 

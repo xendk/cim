@@ -352,11 +352,6 @@ function cim_admin_authenticate_form($form, &$form_state) {
  */
 function cim_admin_authenticate_form_validate($form, &$form_state) {
   // @todo check that $form_state['values']['downstream_name'] haven't been used.
-  $directory = cim_directory();
-  // @todo: remove
-  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
-    form_error($form, t("Error creating peers directory %directory", array('%directory' => $directory)));
-  };
 }
 
 /**
