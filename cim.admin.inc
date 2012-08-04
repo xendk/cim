@@ -467,19 +467,23 @@ function cim_admin_add_upstream_form_validate($form, &$form_state) {
   ksort($request);
   $request['signature'] = $crypt->sign(serialize($request));
   $auth_response = cim_request($form_state['values']['url'], $request);
+   error_log($crypt->open(unserialize(base64_decode($auth_response))));
+  if (!($auth_response = base64_decode($auth_response)) ||
+    !($auth_response = unserialize($auth_response)) ||
+    !($auth_response = $crypt->open($auth_response)) ||
+    !($auth_response = unserialize($auth_response))) {
+    form_error($form['url'], t('Could not decode response.'));
+    return;
+  }
 
   if ($auth_response['status'] == 'OK') {
-    if (empty($auth_response['response']) || !($res = unserialize(base64_decode($auth_response['response'])))) {
-      form_error($form['url'], t('Could not decode upstream response.'));
-    }
-    $res = unserialize($crypt->open($res['data'], $res['envelope']));
     // Extra sanity check.
-    if (!empty($res['token']) && !empty($res['public_key']) && !empty($res['authenticate_url'])) {
-      $res['upstream_name'] = $form_state['values']['upstream_name'];
-      $res['upstream_url'] = $form_state['values']['url'];
+    if (!empty($auth_response['token']) && !empty($auth_response['public_key']) && !empty($auth_response['authenticate_url'])) {
+      $auth_response['upstream_name'] = $form_state['values']['upstream_name'];
+      $auth_response['upstream_url'] = $form_state['values']['url'];
       // Cache the response for later.
-      cache()->set('cim_auth_downstream:' . $res['token'], $res, REQUEST_TIME + 3600);
-      $form_state['cim_auth_res'] = $res;
+      cache()->set('cim_auth_downstream:' . $auth_response['token'], $auth_response, REQUEST_TIME + 3600);
+      $form_state['cim_auth_res'] = $auth_response;
     }
     else {
       // Include the utility drupal_var_export() function.

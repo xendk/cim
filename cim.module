@@ -376,9 +376,11 @@ function cim_xmlrpc_request($request) {
   if (empty($response['message'])) {
     $commands = array('authenticate', 'blob', 'pull', 'push');
     if (in_array($request['action'], $commands)) {
-      $response['message'] = 'Unknown internal error.';
       $func = 'cim_request_' . $request['action'];
       $func($request, $response, $crypt, $peer);
+      if ($response['status'] != 'OK' && empty($response['message'])) {
+        $response['message'] = 'Unknown internal error.';
+      }
       // Authenticate response isn't encrypted.
       if ($request['action'] == 'authenticate') {
         return base64_encode(serialize($response));
