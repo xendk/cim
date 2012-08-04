@@ -49,7 +49,7 @@ class SnapshotController {
     }
     $changeset = Changeset::fromDiff($prevdump, $config);
     if ($changeset) {
-      $snapshot = new Snapshot($message, $this, $parent_sha, $changeset, $config);
+      $snapshot = new Snapshot($message, $parent_sha, $changeset, $config);
       return $snapshot;
     }
     return FALSE;
