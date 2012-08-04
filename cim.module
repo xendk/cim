@@ -100,7 +100,7 @@ function cim_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('cim_admin_add_upstream_form'),
     'type' => MENU_LOCAL_TASK,
-    'file' => 'cim.admin.inc',
+    'file' => 'cim.admin.upstream.inc',
     'access arguments' => array('administer snapshots'),
   );
 
@@ -114,7 +114,7 @@ function cim_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('cim_admin_pull_confirm_form'),
     'type' => MENU_LOCAL_TASK,
-    'file' => 'cim.admin.inc',
+    'file' => 'cim.admin.upstream.inc',
     'access arguments' => array('administer snapshots'),
   );
 
