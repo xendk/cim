@@ -271,100 +271,12 @@ function cim_process_changeset_view_pre_render($element) {
 function cim_xmlrpc() {
   return array(
     array(
-      'cim.authenticate',
-      'cim_xmlrpc_authenticate',
-      array('struct', 'struct'),
-      '',
-    ),
-
-    array(
       'cim.request',
       'cim_xmlrpc_request',
       array('string', 'string'),
       '',
     ),
-    array(
-      'cim.push_changeset',
-      'cim_xmlrpc_push_changeset',
-      array('boolean', 'string'),
-      '',
-    ),
   );
-}
-
-function cim_xmlrpc_ping($version) {
-  $response = array(
-    'status' => '',
-    'message' => '',
-  );
-  // Check for supported version.
-  if ($version == 1) {
-    $response['status'] = 'OK';
-    $response['uri'] = url('admin/config/development/cim/authenticate', array('absolute' => TRUE));
-  }
-  else {
-    $response['status'] = 'ERR';
-    $response['message'] = 'Unsupported protocol version.';
-  }
-  return $response;
-}
-
-function cim_xmlrpc_authenticate($request) {
-  $request += array(
-    'public_key' => '',
-    'return_url' => '',
-    'signature' => '',
-    'version' => '',
-    'core' => '',
-  );
-
-  if ($request['core'] != 8) {
-    return Response::error('Core version mismatch.');
-  }
-  if ($request['version'] != 1) {
-    return Response::error('Unsupported protocol version.');
-  }
-
-  $keys = cim_keys();
-  $crypt = new Crypt($keys, $request['public_key']);
-
-  // Check sig...
-  if (empty($request['signature'])) {
-    return Response::error('Request not signed.');
-  }
-  $signature = base64_decode($request['signature']);
-  unset($request['signature']);
-  ksort($request);
-  /*
-   * Checking the signature with the public key contained in the request might
-   * seem odd, but it ensures that the request was created by the peer with the
-   * corresponding private key.
-   */
-  if (!$crypt->verify(serialize($request), $signature)) {
-    return Response::error('Signature invalid.');
-  }
-
-  $peer_id = hash('sha256', $request['public_key']);
-  /*
-   * Create a token for this authentication.  Uses the key to make it
-   * unguessable, REQUEST_TIME to make it change over time, and peer id to allow
-   * auth requests from different peers in the same second.
-   */
-  $token = hash('sha256', $keys[0] . $peer_id . REQUEST_TIME);
-
-  cache()->set('cim_auth:' . $token, $request, REQUEST_TIME + 3600);
-
-  $response = array(
-    'token' => $token,
-    'authenticate_url' => url('admin/config/development/cim/authenticate', array('absolute' => TRUE)),
-    'public_key' => $crypt->getPublicKey(),
-  );
-
-  $response = $crypt->encrypt(serialize($response));
-  if ($response) {
-    return Response::success($response);
-  }
-  return Response::error('Internal error');
 }
 
 function cim_peer_request($request) {
