@@ -263,6 +263,9 @@ function cim_process_changeset_view_pre_render($element) {
   return $element;
 }
 
+/**
+ * Implements hook_xmlrpc().
+ */
 function cim_xmlrpc() {
   return array(
     array(
@@ -274,9 +277,13 @@ function cim_xmlrpc() {
   );
 }
 
-function cim_peer_request($request) {
-  $upstream = cim_upstream();
-
+/**
+ * Make a request to upstream.
+ */
+function cim_peer_request($request, $upstream = NULL) {
+  if (!$upstream) {
+    $upstream = cim_upstream();
+  }
   // Crypt request.
   $crypt = new Crypt(cim_keys(), $upstream->publicKey());
   $message = array(
@@ -313,6 +320,9 @@ function cim_peer_request($request) {
   return $result;
 }
 
+/**
+ * Make a XMLRPC request.
+ */
 function cim_request($site, $request) {
   $url = $site . 'xmlrpc.php';
   $request = base64_encode(serialize($request));
@@ -320,6 +330,11 @@ function cim_request($site, $request) {
   return $response;
 }
 
+/**
+ * XMLRPC callback.
+ *
+ * Handles a XMLRPC request.
+ */
 function cim_xmlrpc_request($request) {
   $request = unserialize(base64_decode($request));
   $request += array(
@@ -404,6 +419,9 @@ function cim_xmlrpc_request($request) {
   return base64_encode($crypt->encrypt($response));
 }
 
+/**
+ * XMLRPC authenticate command.
+ */
 function cim_request_authenticate($request, &$response, $crypt, $peer) {
   $request += array(
     'public_key' => '',
@@ -434,6 +452,9 @@ function cim_request_authenticate($request, &$response, $crypt, $peer) {
   $response = $crypt->seal(serialize($response));
 }
 
+/**
+ * XMLRPC blob command.
+ */
 function cim_request_blob($request, &$response, $crypt, $peer) {
   if ($request['sha'] && $blob = cim_get_storage()->readSecure($request['sha'])) {
     $response['blob'] = $blob;
@@ -442,6 +463,9 @@ function cim_request_blob($request, &$response, $crypt, $peer) {
   $response['message'] = 'Unknown SHA.';
 }
 
+/**
+ * XMLRPC pull command.
+ */
 function cim_request_pull($request, &$response, $crypt, $peer) {
   // Work from latest snapshot.
   $snapshot = cim_get_controller()->latest();
@@ -451,6 +475,9 @@ function cim_request_pull($request, &$response, $crypt, $peer) {
   $response['status'] = 'OK';
 }
 
+/**
+ * XMLRPC push command.
+ */
 function cim_request_push($request, &$response, $crypt, $peer) {
   // @todo switch user.
   $changeset = !empty($request['changeset']) ? $request['changeset'] : NULL;
@@ -497,7 +524,11 @@ function cim_request_push($request, &$response, $crypt, $peer) {
   }
 }
 
-// @todo proper key storage.
+/**
+ * Returns site keys.
+ *
+ * @todo proper key storage.
+ */
 function cim_keys() {
   $keys = &drupal_static(__FUNCTION__);
   // @todo not convinced that using the php extension is a safe bet, this needs
@@ -516,6 +547,9 @@ function cim_keys() {
   return $keys;
 }
 
+/**
+ * Returns the peer configured as upstream.
+ */
 function cim_upstream() {
   $peer_id = cim_get_storage()->read('upstream');
   if (!($peer = Peer::load($peer_id))) {
