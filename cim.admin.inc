@@ -581,15 +581,15 @@ function cim_admin_pull_confirm_form_submit($form, &$form_state) {
   drupal_set_message('Configuration pulled from upstream.');
 }
 
-function cim_admin_push_confirm_form($form, &$form_state) {
+function cim_admin_push_confirm_form($form, &$form_state, $snapshot) {
   $error = NULL;
-  // Get the diff between the last pull.
+  // Get the diff between the last pull and the given snapshot.
   $last = cim_get_storage()->readSigned('upstream_latest');
   if (empty($last)) {
     $error = t('Cannot push before pulling.');
   }
   else {
-    if (!$snapshot = cim_get_controller()->load($last['local'])) {
+    if (!$last_pulled = cim_get_controller()->load($last['local'])) {
       $error = t('Cannot load local snapshot. Please pull to resync.');
     }
   }
@@ -601,8 +601,7 @@ function cim_admin_push_confirm_form($form, &$form_state) {
     return $form;
   }
   else {
-    $config = new ConfigDrupalConfig();
-    $new_changeset = Changeset::fromDiff($snapshot->dump(), $config);
+    $new_changeset = Changeset::fromDiff($last_pulled->dump(), $snapshot->dump());
 
     if ($new_changeset) {
       $form['intro'] = array(
@@ -617,12 +616,15 @@ function cim_admin_push_confirm_form($form, &$form_state) {
         '#maxlength' => 255,
       );
 
-
       $form['upstream_sha'] = array(
         '#type' => 'value',
         '#value' => $last['upstream'],
       );
 
+      $form['local_sha'] = array(
+        '#type' => 'value',
+        '#value' => $snapshot->sha(),
+      );
       $form['changeset'] = array(
         '#type' => 'cim_changeset_view',
         '#changeset' => $new_changeset,
@@ -650,22 +652,26 @@ function cim_admin_push_confirm_form_submit($form, &$form_state) {
     'action' => 'push',
     'base_sha' => $form_state['values']['upstream_sha'],
     'changeset' => $form_state['values']['new_changeset'],
-
+    'message' => $form_state['values']['message'],
   );
   $response = cim_peer_request($request);
-  // $snapshot = cim_get_controller()->apply($form_state['values']['new_changeset'], $form_state['values']['message']);
 
-  /* $data = array( */
-  /*   'upstream' => $form_state['values']['upstream_sha'], */
-  /*   'local' => $snapshot->sha(), */
-  /* ); */
-
-  // cim_get_storage()->writeSigned($data, 'upstream_latest');
   if ($response && !empty($response['new_sha']) && $response['new_sha'] != $form_state['values']['upstream_sha']) {
     drupal_set_message('Configuration pushed to upstream. ');
+    $data = array(
+      'upstream' => $response['new_sha'],
+      'local' => $form_state['values']['local_sha'],
+    );
+
+    cim_get_storage()->writeSigned($data, 'upstream_latest');
   }
   else {
-    drupal_set_message('An error occurred, please check upstream.', 'error');
+    if ($response['message']) {
+      drupal_set_message(t('Upstream rejected, message: "@message".', array('@message' => $response['message'])), 'error');
+    }
+    else {
+      drupal_set_message(t('An error occurred, please check upstream.'), 'error');
+    }
   }
   $form_state['redirect'] = 'admin/config/development/cim';
 }

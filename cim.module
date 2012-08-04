@@ -93,6 +93,15 @@ function cim_menu() {
     'access arguments' => array(5),
   );
 
+  $items[$root . '/snapshot/%cim_snapshot/push'] = array(
+    'title' => 'Push to upstream',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cim_admin_push_confirm_form', 5),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'cim.admin.inc',
+    'access arguments' => array('administer snapshots'),
+  );
+
   $items[$root . '/upstream'] = array(
     'title' => 'Upstream',
     'page callback' => 'drupal_get_form',
@@ -111,15 +120,6 @@ function cim_menu() {
     'title' => 'Pull configuration',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('cim_admin_pull_confirm_form'),
-    'type' => MENU_LOCAL_TASK,
-    'file' => 'cim.admin.inc',
-    'access arguments' => array('administer snapshots'),
-  );
-
-  $items[$root . '/upstream/push'] = array(
-    'title' => 'Push configuration',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('cim_admin_push_confirm_form'),
     'type' => MENU_LOCAL_TASK,
     'file' => 'cim.admin.inc',
     'access arguments' => array('administer snapshots'),
@@ -527,6 +527,7 @@ function cim_request_push($crypt, $request, $peer) {
     watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
     return Response::success($crypt->encrypt(array(
         'accepted' => FALSE,
+        'message' => 'Not proper changeset.',
         'latest_sha' => $latest->sha(),
       )));
   }
@@ -535,6 +536,7 @@ function cim_request_push($crypt, $request, $peer) {
     // Not based on latest snapshot. Return error.
     return Response::success($crypt->encrypt(array(
         'accepted' => FALSE,
+        'message' => 'Base sha not latest.',
         'latest_sha' => $latest->sha(),
       )));
   }
