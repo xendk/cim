@@ -9,7 +9,6 @@ use Drupal\cim\SnapshotController;
 use Drupal\cim\Difference;
 use Drupal\cim\Changeset;
 use Drupal\cim\Crypt;
-use Drupal\cim\Response;
 use Drupal\cim\Peer;
 use Drupal\cim\DefaultStorage;
 use Drupal\cim\ConfigArray;
@@ -290,14 +289,19 @@ function cim_peer_request($request) {
   );
 
   $result = cim_request($upstream->url(), $message);
-  if (!isset($result['status'])) {
+  if (!($result = $crypt->decrypt(base64_decode($result)))) {
+    throw new Exception('Could not decrypt response');
+  }
+  if (!is_array($result)) {
     throw new Exception('Upstream failed giving a proper answer');
   }
-  if ($result['status'] != 'OK') {
-    return FALSE;
-  }
-  // Decrypt response.
-  $result = $crypt->decrypt(base64_decode($result['response']));
+  $result += array(
+    'status' => 'ERR',
+    'message' => 'Upstream gave no message.',
+  );
+  // Helpful shortcut.
+  $result['success'] = $result['status'] == 'OK';
+
   return $result;
 }
 
@@ -313,6 +317,11 @@ function cim_xmlrpc_request($request) {
   $request += array(
     'action' => '',
   );
+  $response = array(
+    'status' => 'ERR',
+    'message' => '',
+  );
+
 
   $keys = cim_keys();
   $crypt = new Crypt($keys);
@@ -325,11 +334,13 @@ function cim_xmlrpc_request($request) {
 
     $peer = Peer::load($request['peer_id']);
     if (!$peer) {
-      return Response::error('Unknown peer.');
+      $response['message'] = 'Unknown peer.';
     }
-    $crypt->setPeerKey($peer['public_key']);
-    if (!($request = $crypt->decrypt($request['request']))) {
-      return Response::error('Cannot decrypt request.');
+    else {
+      $crypt->setPeerKey($peer['public_key']);
+      if (!($request = $crypt->decrypt($request['request']))) {
+        $response['message'] = 'Cannot decrypt request.';
+      }
     }
   }
   else {
@@ -344,31 +355,46 @@ function cim_xmlrpc_request($request) {
     $crypt->setPeerKey($request['public_key']);
     // Check sig...
     if (empty($request['signature'])) {
-      return Response::error('Request not signed.');
+      $response['message'] = 'Request not signed.';
     }
-    $signature = $request['signature'];
-    unset($request['signature']);
-    ksort($request);
-    /*
-     * Checking the signature with the public key contained in the request might
-     * seem odd, but it ensures that the request was created by the peer with
-     * the corresponding private key.
-     */
-    if (!$crypt->verify(serialize($request), $signature)) {
-      return Response::error('Signature invalid.');
+    else {
+      $signature = $request['signature'];
+      unset($request['signature']);
+      ksort($request);
+      /*
+       * Checking the signature with the public key contained in the request
+       * might seem odd, but it ensures that the request was created by the peer
+       * with the corresponding private key.
+       */
+      if (!$crypt->verify(serialize($request), $signature)) {
+        $response['message'] = 'Signature invalid.';
+      }
     }
   }
 
-  if (in_array($request['action'], array('authenticate', 'blob', 'pull', 'push'))) {
-    $func = 'cim_request_' . $request['action'];
-    return $func($crypt, $request, $peer);
+  // If no error has been set yet, continue.
+  if (empty($response['message'])) {
+    $commands = array('authenticate', 'blob', 'pull', 'push');
+    if (in_array($request['action'], $commands)) {
+      $response['message'] = 'Unknown internal error.';
+      $func = 'cim_request_' . $request['action'];
+      $func($request, $response, $crypt, $peer);
+      // Authenticate response isn't encrypted.
+      if ($request['action'] == 'authenticate') {
+        return base64_encode(serialize($response));
+      }
+    }
+    else {
+      $response = array(
+        'status' => 'ERR',
+        'message' => 'Unsupported action.',
+      );
+    }
   }
-  else {
-    return Response::error('Unsupported action.');
-  }
+  return base64_encode($crypt->encrypt($response));
 }
 
-function cim_request_authenticate($crypt, $request) {
+function cim_request_authenticate($request, &$response, $crypt, $peer) {
   $request += array(
     'public_key' => '',
     'return_url' => '',
@@ -387,72 +413,49 @@ function cim_request_authenticate($crypt, $request) {
   // @todo check that core and version is compatible.
   cache()->set('cim_auth_upstream:' . $token, $request, REQUEST_TIME + 3600);
 
-  $response = array(
+  $response += array(
     'token' => $token,
     'authenticate_url' => url('admin/config/development/cim/authenticate', array('absolute' => TRUE)),
     'public_key' => $crypt->getPublicKey(),
   );
 
+  $response['status'] = 'OK';
   $response = $crypt->seal(serialize($response));
-  if ($response) {
-    return Response::success(serialize($response));
-  }
-  return Response::error('Internal error');
 }
 
-function cim_request_blob($crypt, $request) {
+function cim_request_blob($request, &$response, $crypt, $peer) {
   if ($request['sha'] && $blob = cim_get_storage()->readSecure($request['sha'])) {
-    $response = array(
-      'blob' => $blob,
-    );
-
-    $response = $crypt->encrypt($response);
-    if ($response) {
-      return Response::success($response);
-    }
-    return Response::error('Internal error');
-
+    $response['blob'] = $blob;
+    $response['status'] = 'OK';
   }
-  return Response::error('Unknown sha');
+  $response['message'] = 'Unknown SHA.';
 }
 
-function cim_request_pull($crypt, $request) {
+function cim_request_pull($request, &$response, $crypt, $peer) {
   // Work from latest snapshot.
   $snapshot = cim_get_controller()->latest();
 
-  $response = array(
-    'sha' => $snapshot->sha(),
-    'snapshot' => $snapshot,
-  );
-
-  $response = $crypt->encrypt($response);
-  if ($response) {
-    return Response::success($response);
-  }
-  return Response::error('Internal error');
+  $response['sha'] = $snapshot->sha();
+  $response['snapshot'] = $snapshot;
+  $response['status'] = 'OK';
 }
 
-function cim_request_push($crypt, $request, $peer) {
+function cim_request_push($request, &$response, $crypt, $peer) {
   // @todo switch user.
   $changeset = !empty($request['changeset']) ? $request['changeset'] : NULL;
   $latest = cim_get_controller()->latest();
 
+  $response['latest_sha'] = $latest->sha();
   if (!($changeset instanceof Changeset)) {
     watchdog('cim', 'Invalid push request.', NULL, WATCHDOG_WARNING);
-    return Response::success($crypt->encrypt(array(
-        'accepted' => FALSE,
-        'message' => 'Not proper changeset.',
-        'latest_sha' => $latest->sha(),
-      )));
+    $response['message'] = 'Not proper changeset.';
+    return;
   }
 
   if ($latest->sha() != $request['base_sha']) {
     // Not based on latest snapshot. Return error.
-    return Response::success($crypt->encrypt(array(
-        'accepted' => FALSE,
-        'message' => 'Base sha not latest.',
-        'latest_sha' => $latest->sha(),
-      )));
+    $response['message'] = 'Base SHA not latest.';
+    return;
   }
 
   /* Check that there's no conflicting local changes, not yet snapshotted. We do
@@ -463,11 +466,8 @@ function cim_request_push($crypt, $request, $peer) {
     // @todo why is $lastest->dump() not already a ConfigArray?
     $post_push = $changeset->apply(new ConfigArray($latest->dump()));
     if (!$current->changeset()->appliesTo($post_push)) {
-      return Response::success($crypt->encrypt(array(
-            'accepted' => FALSE,
-            'message' => 'Conflicts with local changes.',
-            'latest_sha' => $latest->sha(),
-          )));
+      $response['message'] = 'Conflicts with local chanegs.';
+      return;
     }
   }
 
@@ -477,10 +477,13 @@ function cim_request_push($crypt, $request, $peer) {
     $request['message'] . '"' : 'Changeset pushed from ' . $peer['name'] . ' without a message.';
 
   $new_snapshot = cim_get_controller()->apply($changeset, $message);
-  return Response::success($crypt->encrypt(array(
-      'accepted' => TRUE,
-      'new_sha' => $new_snapshot->sha(),
-    )));
+  if ($new_snapshot) {
+    $response['latest_sha'] = $new_snapshot->sha();
+    $response['status'] = 'OK';
+  }
+  else {
+    $response['message'] = 'Could not apply changeset.';
+  }
 }
 
 // @todo proper key storage.

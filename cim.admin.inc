@@ -521,13 +521,15 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
   $response = cim_peer_request($request);
   $latest = cim_get_controller()->latest();
 
-  if (!empty($response['snapshot']) && ($response['snapshot']->dump_sha() != $latest->dump_sha())) {
+  if ($response['success'] && !empty($response['snapshot']) && ($response['snapshot']->dump_sha() != $latest->dump_sha())) {
     $blob = cim_peer_request(array('action' => 'blob', 'sha' => $response['snapshot']->dump_sha()));
 
-    // Create a changeset we can use by taking the difference between our config
-    // and upstreams.
-    $config = new ConfigDrupalConfig();
-    $new_changeset = Changeset::fromDiff($config, $blob['blob']);
+    if ($blob['success']) {
+      // Create a changeset we can use by taking the difference between our config
+      // and upstreams.
+      $config = new ConfigDrupalConfig();
+      $new_changeset = Changeset::fromDiff($config, $blob['blob']);
+    }
   }
 
   if (!empty($new_changeset)) {
@@ -656,10 +658,10 @@ function cim_admin_push_confirm_form_submit($form, &$form_state) {
   );
   $response = cim_peer_request($request);
 
-  if ($response && !empty($response['new_sha']) && $response['new_sha'] != $form_state['values']['upstream_sha']) {
+  if ($response['success'] && !empty($response['latest_sha']) && $response['latest_sha'] != $form_state['values']['upstream_sha']) {
     drupal_set_message('Configuration pushed to upstream. ');
     $data = array(
-      'upstream' => $response['new_sha'],
+      'upstream' => $response['latest_sha'],
       'local' => $form_state['values']['local_sha'],
     );
 
