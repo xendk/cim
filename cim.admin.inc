@@ -696,35 +696,3 @@ function cim_admin_push_confirm_form_submit($form, &$form_state) {
     }
   }
 }
-
-/**
- * Menu callback; Testing page.
- *
- * @todo not for release.
- */
-function cim_testing() {
-  /* dpm(cim_get_controller()->save('Test initial') ? 'saved' : 'nothing to save'); */
-  /* $config = config('system.performance'); */
-  /* for ($i = 1; $i < 5; $i++) { */
-  /*   $config->set('cache', $i); */
-  /*   $config->save(); */
-  /*   dpm(cim_get_controller()->save('Set caching to ' . $i) ? 'saved' : 'nothing to save'); */
-  /* } */
-
-  $c1 = new Crypt();
-  $c2 = new Crypt();
-  $c1->keyGen(); $c2->keyGen();
-  $c1->setPeerKey($c2->getPublicKey());
-  $c2->setPeerKey($c1->getPublicKey());
-  /* $c1->peer_public_key = $c2->public_key; */
-  /* $c2->peer_public_key = $c1->public_key; */
-
-  $message = $c1->encrypt(array('testdata' => 'this is a test'));
-  dpm($c2->decrypt($message));
-
-  $message2 = $c2->encrypt('this is another test');
-  dpm($c1->decrypt($message2));
-
-  /* $crypt->test(); */
-  return "";
-}

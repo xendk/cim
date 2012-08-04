@@ -42,13 +42,6 @@ function cim_menu() {
     'weight' => -1,
     'file' => 'cim.admin.inc',
   );
-  $items[$root . '/test'] = array(
-    'title' => 'Teststuff',
-    'page callback' => 'cim_testing',
-    'access arguments' => array('administer snapshots'),
-    'type' => MENU_LOCAL_TASK,
-    'file' => 'cim.admin.inc',
-  );
 
   $items[$root . '/create'] = array(
     'title' => 'Create snapshot.',
@@ -288,6 +281,9 @@ function cim_peer_request($request) {
     'peer_id' => hash('sha256', $crypt->getPublicKey()),
   );
   $result = cim_request($upstream->url(), $message);
+  if ($result === FALSE) {
+    throw new Exception('Major failure at upstream. Most likely the best place to look for an error message is the error.log.');
+  }
   if (!($result = base64_decode($result))) {
     throw new Exception('Could not decode response');
   }
@@ -486,7 +482,7 @@ function cim_request_push($request, &$response, $crypt, $peer) {
   $message = !empty($request['message']) &&
     ($request['message'] != 'No message.') ?
     'Changeset pushed from ' . $peer['name'] . ' with message "' .
-    $request['message'] . '"' : 'Changeset pushed from ' . $peer['name'] . ' without a message.';
+    $request['message'] . '"' : 'Changeset pushed from ' . $peer->name() . ' without a message.';
 
   $new_snapshot = cim_get_controller()->apply($changeset, $message);
   if ($new_snapshot) {
