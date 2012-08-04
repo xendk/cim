@@ -384,6 +384,7 @@ function cim_request_authenticate($crypt, $request) {
    */
   $token = hash('sha256', $keys[0] . $peer_id . REQUEST_TIME);
 
+  // @todo check that core and version is compatible.
   cache()->set('cim_auth_upstream:' . $token, $request, REQUEST_TIME + 3600);
 
   $response = array(
