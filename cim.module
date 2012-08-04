@@ -12,6 +12,7 @@ use Drupal\cim\Crypt;
 use Drupal\cim\Response;
 use Drupal\cim\Peer;
 use Drupal\cim\DefaultStorage;
+use Drupal\cim\ConfigArray;
 
 /**
  * Implements hook_menu().
@@ -539,6 +540,21 @@ function cim_request_push($crypt, $request, $peer) {
         'message' => 'Base sha not latest.',
         'latest_sha' => $latest->sha(),
       )));
+  }
+
+  /* Check that there's no conflicting local changes, not yet snapshotted. We do
+   * that by creating a changeset for the local changes, and testing if it
+   * applies to the new config.
+  */
+  if ($current = cim_get_controller()->create()) {
+    $post_push = $changeset->apply(new ConfigArray($latest->dump()));
+    if (!$current->changeset()->appliesTo($post_push)) {
+      return Response::success($crypt->encrypt(array(
+            'accepted' => FALSE,
+            'message' => 'Conflicts with local changes.',
+            'latest_sha' => $latest->sha(),
+          )));
+    }
   }
 
   $message = !empty($request['message']) &&

@@ -664,6 +664,7 @@ function cim_admin_push_confirm_form_submit($form, &$form_state) {
     );
 
     cim_get_storage()->writeSigned($data, 'upstream_latest');
+    $form_state['redirect'] = 'admin/config/development/cim';
   }
   else {
     if ($response['message']) {
@@ -673,7 +674,6 @@ function cim_admin_push_confirm_form_submit($form, &$form_state) {
       drupal_set_message(t('An error occurred, please check upstream.'), 'error');
     }
   }
-  $form_state['redirect'] = 'admin/config/development/cim';
 }
 
 /**
