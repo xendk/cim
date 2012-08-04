@@ -287,10 +287,20 @@ function cim_peer_request($request) {
     'request' => $crypt->encrypt($request),
     'peer_id' => hash('sha256', $crypt->getPublicKey()),
   );
-
   $result = cim_request($upstream->url(), $message);
-  if (!($result = $crypt->decrypt(base64_decode($result)))) {
-    throw new Exception('Could not decrypt response');
+  if (!($result = base64_decode($result))) {
+    throw new Exception('Could not decode response');
+  }
+  // In the case that peer cannot encrypt the response, it might return an
+  // unencrypted response. Check if the data has an envelope.
+  $unserialized = unserialize($result);
+  if (isset($unserialized['envelope'])) {
+    if (!($result = $crypt->decrypt($result))) {
+      throw new Exception('Could not decrypt response');
+    }
+  }
+  else {
+    $result = $unserialized;
   }
   if (!is_array($result)) {
     throw new Exception('Upstream failed giving a proper answer');
@@ -301,7 +311,6 @@ function cim_peer_request($request) {
   );
   // Helpful shortcut.
   $result['success'] = $result['status'] == 'OK';
-
   return $result;
 }
 
@@ -322,22 +331,22 @@ function cim_xmlrpc_request($request) {
     'message' => '',
   );
 
-
   $keys = cim_keys();
   $crypt = new Crypt($keys);
+  $peer = NULL;
   // Authenticate is the only request not encrypted.
   if ($request['action'] != 'authenticate') {
     $request += array(
       'request' => '',
       'peer_id' => '',
     );
-
     $peer = Peer::load($request['peer_id']);
     if (!$peer) {
       $response['message'] = 'Unknown peer.';
+      return base64_encode(serialize($response));
     }
     else {
-      $crypt->setPeerKey($peer['public_key']);
+      $crypt->setPeerKey($peer->publicKey());
       if (!($request = $crypt->decrypt($request['request']))) {
         $response['message'] = 'Cannot decrypt request.';
       }
@@ -378,7 +387,7 @@ function cim_xmlrpc_request($request) {
     if (in_array($request['action'], $commands)) {
       $func = 'cim_request_' . $request['action'];
       $func($request, $response, $crypt, $peer);
-      if ($response['status'] != 'OK' && empty($response['message'])) {
+      if (isset($response['status']) && $response['status'] != 'OK' && empty($response['message'])) {
         $response['message'] = 'Unknown internal error.';
       }
       // Authenticate response isn't encrypted.
@@ -405,6 +414,7 @@ function cim_request_authenticate($request, &$response, $crypt, $peer) {
     'core' => '',
   );
   $peer_id = hash('sha256', $request['public_key']);
+  $keys = $crypt->getKeyPair();
   /*
    * Create a token for this authentication.  Uses the key to make it
    * unguessable, REQUEST_TIME to make it change over time, and peer id to allow

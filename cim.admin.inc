@@ -372,7 +372,8 @@ function cim_admin_authenticate_form_submit($form, &$form_state) {
     return;
   }
 
-  new Peer($form_state['values']['downstream_name'], $form_state['cim_peer_data']['public_key'], $user->uid);
+  $peer = new Peer($form_state['values']['downstream_name'], $form_state['cim_peer_data']['public_key'], $user->uid);
+  $peer->save();
 
   $form_state['redirect'] = array(
     $form_state['cim_peer_data']['return_url'],
@@ -568,9 +569,23 @@ function cim_admin_pull_confirm_form($form, &$form_state) {
     return confirm_form($form, 'Pull configuration?', 'admin/config/development/cim');
   }
   else {
-    $form['message'] = array(
-      '#markup' => t('Configuration is in sync with upstream.'),
-    );
+    if ($response['success']) {
+      $form['message'] = array(
+        '#markup' => t('Configuration is in sync with upstream.'),
+      );
+    }
+    else {
+      if ($response['message']) {
+        $message = t('Upstream reported an error: "@message"', array('@message' => $response['message']));
+      }
+      else {
+        drupal_set_message(t('Upstream reported an error, but gave no error message'), 'error');
+      }
+      drupal_set_message($message, 'error');
+      $form['message'] = array(
+        '#markup' => t('Error fetching.'),
+      );
+    }
     return $form;
   }
 }
