@@ -547,6 +547,7 @@ function cim_request_push($crypt, $request, $peer) {
    * applies to the new config.
   */
   if ($current = cim_get_controller()->create()) {
+    // @todo why is $lastest->dump() not already a ConfigArray?
     $post_push = $changeset->apply(new ConfigArray($latest->dump()));
     if (!$current->changeset()->appliesTo($post_push)) {
       return Response::success($crypt->encrypt(array(
