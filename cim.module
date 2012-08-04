@@ -170,7 +170,7 @@ function cim_get_storage() {
     // todo: this is odd, figure out how to do it.
     $crypt->setPeerKey($crypt->getPublicKey());
     $dir = config_get_config_directory() . '/' . hash('sha256', $crypt->getPublicKey());
-    file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+    file_prepare_directory($dir, FILE_CREATE_DIRECTORY);
     // Really, should be pluggable.
     $controller = new DefaultStorage($crypt, $dir);
 
